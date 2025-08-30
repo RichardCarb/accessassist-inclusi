@@ -6,8 +6,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Microphone, MicrophoneSlash, Plus, X, Calendar, Hash, FileText } from '@phosphor-icons/react'
+import { Progress } from '@/components/ui/progress'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Microphone, MicrophoneSlash, Plus, X, Calendar, Hash, FileText, VideoCamera, Type } from '@phosphor-icons/react'
 import { ComplaintData } from './ComplaintTracker'
+import { SignLanguageRecorder } from './SignLanguageRecorder'
+import { toast } from 'sonner'
 
 interface ComplaintIntakeProps {
   onComplaintCreated: (complaint: ComplaintData) => void
@@ -15,9 +19,10 @@ interface ComplaintIntakeProps {
 }
 
 interface EvidenceItem {
-  type: 'text' | 'date' | 'reference'
+  type: 'text' | 'date' | 'reference' | 'video'
   description: string
   value: string
+  videoBlob?: Blob
 }
 
 const GUIDED_PROMPTS = [
@@ -30,6 +35,8 @@ const GUIDED_PROMPTS = [
 ]
 
 export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: ComplaintIntakeProps) {
+  const [inputMode, setInputMode] = useState<'text' | 'sign'>('text')
+  const [showSignRecorder, setShowSignRecorder] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [isListening, setIsListening] = useState(false)
   const [company, setCompany] = useState('')
@@ -87,6 +94,25 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
       recognitionRef.current.stop()
       setIsListening(false)
     }
+  }
+
+  const handleVideoRecorded = (videoBlob: Blob, transcript?: string) => {
+    const videoEvidence: EvidenceItem = {
+      type: 'video',
+      description: 'UK Sign Language complaint details',
+      value: transcript || 'Sign language video recorded',
+      videoBlob: videoBlob
+    }
+    
+    setEvidence([...evidence, videoEvidence])
+    setShowSignRecorder(false)
+    
+    // Auto-populate current input with transcript if available
+    if (transcript) {
+      setCurrentInput(prev => prev + (prev ? ' ' : '') + transcript)
+    }
+    
+    toast.success('Sign language video added to your complaint')
   }
 
   const addEvidence = () => {
@@ -158,6 +184,16 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
   const currentPrompt = GUIDED_PROMPTS[currentStep]
   const progress = ((currentStep + 1) / GUIDED_PROMPTS.length) * 100
 
+  if (showSignRecorder) {
+    return (
+      <SignLanguageRecorder
+        onVideoRecorded={handleVideoRecorded}
+        onClose={() => setShowSignRecorder(false)}
+        maxDurationMinutes={5}
+      />
+    )
+  }
+
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
@@ -168,64 +204,96 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
           </Badge>
         </CardTitle>
         <div className="w-full bg-muted rounded-full h-2 mt-2">
-          <div 
-            className="bg-primary h-2 rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-            role="progressbar"
-            aria-valuenow={progress}
-            aria-valuemin={0}
-            aria-valuemax={100}
+          <Progress 
+            value={progress}
+            className="h-2"
             aria-label={`Progress: ${Math.round(progress)}% complete`}
           />
         </div>
       </CardHeader>
 
       <CardContent className="space-y-6">
+        {/* Input Mode Selection */}
         <div className="space-y-4">
-          <Label htmlFor="current-input" className="text-lg font-medium">
-            {currentPrompt}
-          </Label>
-          
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Textarea
-                id="current-input"
-                ref={textareaRef}
-                value={currentInput}
-                onChange={(e) => setCurrentInput(e.target.value)}
-                placeholder="Type your response here..."
-                className="flex-1 min-h-[100px]"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && e.ctrlKey) {
-                    handleNext()
-                  }
-                }}
-              />
-              
-              {voiceEnabled && (
-                <Button
-                  type="button"
-                  variant={isListening ? "destructive" : "outline"}
-                  size="icon"
-                  onClick={isListening ? stopListening : startListening}
-                  aria-label={isListening ? "Stop voice input" : "Start voice input"}
-                >
-                  {isListening ? (
-                    <MicrophoneSlash className="h-4 w-4" />
-                  ) : (
-                    <Microphone className="h-4 w-4" />
-                  )}
-                </Button>
-              )}
-            </div>
+          <Label className="text-base font-medium">How would you like to provide details?</Label>
+          <Tabs value={inputMode} onValueChange={(value: 'text' | 'sign') => setInputMode(value)}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="text" className="flex items-center gap-2">
+                <Type className="h-4 w-4" />
+                Text/Voice
+              </TabsTrigger>
+              <TabsTrigger value="sign" className="flex items-center gap-2">
+                <VideoCamera className="h-4 w-4" />
+                UK Sign Language
+              </TabsTrigger>
+            </TabsList>
             
-            {isListening && (
-              <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                Listening... Speak clearly and we'll add your words to the text above.
-              </p>
-            )}
-          </div>
+            <TabsContent value="text" className="space-y-4 mt-4">
+              <Label htmlFor="current-input" className="text-lg font-medium">
+                {currentPrompt}
+              </Label>
+              
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Textarea
+                    id="current-input"
+                    ref={textareaRef}
+                    value={currentInput}
+                    onChange={(e) => setCurrentInput(e.target.value)}
+                    placeholder="Type your response here..."
+                    className="flex-1 min-h-[100px]"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.ctrlKey) {
+                        handleNext()
+                      }
+                    }}
+                  />
+                  
+                  {voiceEnabled && (
+                    <Button
+                      type="button"
+                      variant={isListening ? "destructive" : "outline"}
+                      size="icon"
+                      onClick={isListening ? stopListening : startListening}
+                      aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                    >
+                      {isListening ? (
+                        <MicrophoneSlash className="h-4 w-4" />
+                      ) : (
+                        <Microphone className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
+                
+                {isListening && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                    Listening... Speak clearly and we'll add your words to the text above.
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="sign" className="space-y-4 mt-4">
+              <div className="text-center space-y-4 p-6 border rounded-lg bg-muted/50">
+                <VideoCamera className="h-12 w-12 mx-auto text-primary" />
+                <div>
+                  <h3 className="font-medium text-lg mb-2">{currentPrompt}</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Record your response using UK Sign Language. The video will be processed and included in your complaint.
+                  </p>
+                  <Button 
+                    onClick={() => setShowSignRecorder(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <VideoCamera className="h-4 w-4" />
+                    Record Sign Language Response
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
 
         {currentStep >= 2 && evidence.length > 0 && (
@@ -237,6 +305,7 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
                   {item.type === 'date' && <Calendar className="h-4 w-4" />}
                   {item.type === 'reference' && <Hash className="h-4 w-4" />}
                   {item.type === 'text' && <FileText className="h-4 w-4" />}
+                  {item.type === 'video' && <VideoCamera className="h-4 w-4 text-primary" />}
                   <span className="text-sm flex-1">{item.description}: {item.value}</span>
                   <Button
                     variant="ghost"
@@ -280,16 +349,23 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
           
           <Button
             onClick={handleNext}
-            disabled={!currentInput.trim() && currentStep < GUIDED_PROMPTS.length - 1}
+            disabled={!currentInput.trim() && currentStep < GUIDED_PROMPTS.length - 1 && !evidence.some(e => e.type === 'video')}
             className="flex-1"
           >
             {currentStep === GUIDED_PROMPTS.length - 1 ? 'Create Complaint' : 'Next'}
           </Button>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Press Ctrl+Enter to advance to the next step
-        </p>
+        <div className="text-center space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Press Ctrl+Enter to advance to the next step • Switch between text and sign language input anytime
+          </p>
+          {evidence.some(e => e.type === 'video') && (
+            <p className="text-xs text-primary">
+              ✓ Sign language video included in your complaint
+            </p>
+          )}
+        </div>
       </CardContent>
     </Card>
   )

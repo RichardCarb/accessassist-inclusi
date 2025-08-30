@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useKV } from '@github/spark/hooks'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -50,14 +50,6 @@ function App() {
       root.style.fontSize = fontSize
     }
   }, [accessibilitySettings])
-  const [accessibilitySettings] = useKV<AccessibilitySettings>('accessibility-settings', {
-    voiceEnabled: false,
-    highContrast: false,
-    fontSize: 'normal',
-    reducedMotion: false,
-    screenReader: false
-  })
-  const [showAccessibilityControls, setShowAccessibilityControls] = useState(false)
 
   const handleComplaintCreated = (complaint: ComplaintData) => {
     setCurrentComplaint(complaint)

@@ -18,11 +18,18 @@ interface AccessibilitySettings {
 interface AccessibilityControlsProps {
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
+  settings?: AccessibilitySettings
+  onSettingsChange?: (settings: AccessibilitySettings) => void
 }
 
-export function AccessibilityControls({ isOpen: externalIsOpen, onOpenChange }: AccessibilityControlsProps = {}) {
+export function AccessibilityControls({ 
+  isOpen: externalIsOpen, 
+  onOpenChange,
+  settings: externalSettings,
+  onSettingsChange 
+}: AccessibilityControlsProps = {}) {
   const [internalIsOpen, setInternalIsOpen] = useState(false)
-  const [settings, setSettings] = useKV<AccessibilitySettings>('accessibility-settings', {
+  const [internalSettings, setInternalSettings] = useKV<AccessibilitySettings>('accessibility-settings', {
     highContrast: false,
     fontSize: 'normal',
     reducedMotion: false,
@@ -33,9 +40,15 @@ export function AccessibilityControls({ isOpen: externalIsOpen, onOpenChange }: 
   // Use external control if provided, otherwise use internal state
   const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen
   const setIsOpen = onOpenChange || setInternalIsOpen
+  const settings = externalSettings || internalSettings
 
   const updateSetting = (key: keyof AccessibilitySettings, value: any) => {
-    setSettings(prev => ({ ...prev, [key]: value }))
+    const newSettings = { ...settings, [key]: value }
+    if (onSettingsChange) {
+      onSettingsChange(newSettings)
+    } else {
+      setInternalSettings(newSettings)
+    }
   }
 
   // Apply settings to document

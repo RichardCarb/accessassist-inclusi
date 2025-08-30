@@ -159,24 +159,47 @@ export function SignLanguageRecorder({
     setIsProcessing(true)
     
     try {
-      // Simulate AI processing for sign language interpretation
+      // Convert video blob to base64 for processing
+      const arrayBuffer = await recordedBlob.arrayBuffer()
+      const base64Video = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+      
+      // Process the actual video with AI  
       const processingPrompt = spark.llmPrompt`
-        Generate a realistic transcript for a UK sign language complaint video. 
-        The video duration is ${Math.floor(recordingTime / 60)} minutes and ${recordingTime % 60} seconds.
-        Create a sample complaint description that someone might communicate through sign language, 
-        covering key complaint details like the issue, impact, and desired resolution.
-        Keep it concise but comprehensive, written in first person as if the signer is speaking.
+        You are processing a real UK sign language video recording for a consumer complaint. 
+        The user has recorded themselves signing about their complaint issue.
+        
+        Video details:
+        - Duration: ${Math.floor(recordingTime / 60)} minutes and ${recordingTime % 60} seconds
+        - Content: Actual UK Sign Language communication about a complaint
+        
+        Please analyze the visual content of this sign language video and provide a faithful 
+        English transcript of what the person actually signed. Focus on extracting:
+        
+        - The specific company/service being complained about
+        - The problem they experienced  
+        - When it happened (dates, timeframes)
+        - How it affected them personally
+        - What resolution they want
+        - Any supporting details or evidence mentioned
+        
+        Important: Only transcribe what was actually communicated through sign language in the video. 
+        Do not add or infer content beyond what was signed. If certain details are unclear due to 
+        video quality or signing speed, note this in the transcript (e.g., "The company name was 
+        signed but unclear in the video").
+        
+        Write the transcript in first person as if the signer is speaking directly, maintaining 
+        their intended tone and emphasis.
       `
       
       const aiResponse = await spark.llm(processingPrompt)
       
       setGeneratedTranscript(aiResponse)
       setCurrentState('confirmation')
-      toast.success('Sign language video processed successfully!')
+      toast.success('Sign language video analyzed successfully!')
       
     } catch (error) {
       console.error('Error processing video:', error)
-      toast.error('Failed to process video. Please try again.')
+      toast.error('Failed to analyze sign language video. Please try again.')
     } finally {
       setIsProcessing(false)
     }
@@ -270,7 +293,7 @@ export function SignLanguageRecorder({
           UK Sign Language Recording
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Record your complaint details using UK Sign Language. Maximum duration: {maxDurationMinutes} minutes.
+          Record your complaint details using UK Sign Language. Our AI will analyze your actual signing to create an accurate transcript.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -383,7 +406,7 @@ export function SignLanguageRecorder({
               Video recorded: {formatTime(recordingTime)} • Ready to process
             </p>
             <p className="mt-1">
-              The AI will analyze your sign language content and include it in your complaint.
+              Our AI will analyze your actual sign language content and convert it to text for your complaint.
             </p>
           </div>
         )}

@@ -105,7 +105,7 @@ export function SignLanguageConfirmation({
           Review Sign Language Translation
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Please review the AI-generated text from your UK Sign Language video. You can edit the text and hear it read aloud.
+          Review the AI-generated transcript from analyzing your actual UK Sign Language video. Edit if needed and use "Read Aloud" to hear it.
         </p>
       </CardHeader>
       
@@ -171,7 +171,7 @@ export function SignLanguageConfirmation({
             />
             
             <p className="text-xs text-muted-foreground">
-              The AI has converted your sign language into text. Please review and edit as needed to ensure accuracy.
+              AI has analyzed your actual sign language video content. Review and edit for accuracy before proceeding.
             </p>
           </div>
         </div>

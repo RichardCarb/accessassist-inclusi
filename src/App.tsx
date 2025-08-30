@@ -93,7 +93,9 @@ function App() {
     <div className="min-h-screen bg-background">
       <AccessibilityControls 
         isOpen={showAccessibilityControls} 
-        onOpenChange={setShowAccessibilityControls} 
+        onOpenChange={setShowAccessibilityControls}
+        settings={accessibilitySettings}
+        onSettingsChange={setAccessibilitySettings}
       />
       <Toaster position="top-center" />
       

@@ -8,6 +8,7 @@ import { Clock, CheckCircle, AlertTriangle, ArrowRight } from '@phosphor-icons/r
 
 export interface ComplaintData {
   id: string
+  complainantName: string
   company: {
     name: string
     channel: 'email' | 'webform' | 'letter'
@@ -15,9 +16,10 @@ export interface ComplaintData {
   }
   issue: string
   evidence: Array<{
-    type: 'text' | 'date' | 'reference'
+    type: 'text' | 'date' | 'reference' | 'video'
     description: string
     value: string
+    videoBlob?: Blob
   }>
   impact: string
   desiredRemedy: string

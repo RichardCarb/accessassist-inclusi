@@ -24,6 +24,32 @@ function App() {
   const [currentView, setCurrentView] = useState<AppView>('home')
   const [currentComplaint, setCurrentComplaint] = useState<ComplaintData | null>(null)
   const [complaints, setComplaints] = useKV<ComplaintData[]>('complaints', [])
+  const [accessibilitySettings, setAccessibilitySettings] = useKV<AccessibilitySettings>('accessibility-settings', {
+    voiceEnabled: false,
+    highContrast: false,
+    fontSize: 'normal',
+    reducedMotion: false,
+    screenReader: false
+  })
+  const [showAccessibilityControls, setShowAccessibilityControls] = useState(false)
+
+  // Apply accessibility settings to document
+  React.useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement
+      
+      // Apply high contrast
+      root.classList.toggle('high-contrast', accessibilitySettings.highContrast)
+      
+      // Apply reduced motion
+      root.classList.toggle('reduced-motion', accessibilitySettings.reducedMotion)
+      
+      // Apply font size
+      const fontSize = accessibilitySettings.fontSize === 'large' ? '18px' : 
+                     accessibilitySettings.fontSize === 'extra-large' ? '20px' : '16px'
+      root.style.fontSize = fontSize
+    }
+  }, [accessibilitySettings])
   const [accessibilitySettings] = useKV<AccessibilitySettings>('accessibility-settings', {
     voiceEnabled: false,
     highContrast: false,

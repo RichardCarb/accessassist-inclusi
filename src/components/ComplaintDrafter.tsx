@@ -39,20 +39,26 @@ export function ComplaintDrafter({ complaint, onDraftUpdated, onBackToIntake }: 
       
       const prompt = spark.llmPrompt`
         Create a formal complaint letter with these details:
+        Complainant: ${complaint.complainantName}
         Company: ${complaint.company.name}
         Issue: ${complaint.issue}
         Evidence: ${evidenceText}
         Impact: ${complaint.impact}
         Desired remedy: ${complaint.desiredRemedy}
         
-        Structure the complaint with clear sections:
-        1. Issue description
-        2. Evidence and timeline
-        3. Impact statement
-        4. Desired resolution
-        5. Reasonable deadline (14-28 days from today)
+        Create a complete email-ready complaint letter including:
+        - Subject line for email
+        - Proper greeting and sender identification
+        - Clear complaint sections:
+          1. Issue description
+          2. Evidence and timeline
+          3. Impact statement  
+          4. Desired resolution
+          5. Reasonable deadline (14-28 days from today)
+        - Professional closing
         
-        Use plain English (Grade 8 reading level), professional tone, 180-250 words.
+        Format as a complete email that requires no additional information.
+        Use plain English (Grade 8 reading level), professional tone, 200-300 words.
         Include relevant consumer rights context where appropriate: ${CONSUMER_RIGHTS_CONTEXT}
         Add the phrase "This is not legal advice but informational guidance" at the end.
       `

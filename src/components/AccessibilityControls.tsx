@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useKV } from '@github/spark/hooks'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -39,12 +39,14 @@ export function AccessibilityControls({ isOpen: externalIsOpen, onOpenChange }: 
   }
 
   // Apply settings to document
-  if (typeof document !== 'undefined') {
-    const root = document.documentElement
-    root.classList.toggle('high-contrast', settings.highContrast)
-    root.classList.toggle('reduced-motion', settings.reducedMotion)
-    root.style.fontSize = settings.fontSize === 'large' ? '18px' : settings.fontSize === 'extra-large' ? '20px' : '16px'
-  }
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement
+      root.classList.toggle('high-contrast', settings.highContrast)
+      root.classList.toggle('reduced-motion', settings.reducedMotion)
+      root.style.fontSize = settings.fontSize === 'large' ? '18px' : settings.fontSize === 'extra-large' ? '20px' : '16px'
+    }
+  }, [settings])
 
   // Only show floating button if not externally controlled
   if (!isOpen && externalIsOpen === undefined) {

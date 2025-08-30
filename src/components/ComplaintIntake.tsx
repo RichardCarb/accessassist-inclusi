@@ -26,6 +26,7 @@ interface EvidenceItem {
 }
 
 const GUIDED_PROMPTS = [
+  "What is your full name?",
   "What company is this complaint about?",
   "What specific issue did you experience?", 
   "When did this happen? Please provide any relevant dates.",
@@ -39,12 +40,13 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
   const [showSignRecorder, setShowSignRecorder] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [isListening, setIsListening] = useState(false)
+  const [complainantName, setComplainantName] = useState('')
   const [company, setCompany] = useState('')
   const [issue, setIssue] = useState('')
   const [evidence, setEvidence] = useState<EvidenceItem[]>([])
   const [impact, setImpact] = useState('')
   const [desiredRemedy, setDesiredRemedy] = useState('')
-  const [channel, setChannel] = useState<'email' | 'webform' | 'letter'>('email')
+  const [channel] = useState<'email' | 'webform' | 'letter'>('email') // Fixed to email only
   const [currentInput, setCurrentInput] = useState('')
   
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -132,25 +134,28 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
   const handleNext = () => {
     switch (currentStep) {
       case 0:
-        setCompany(currentInput.trim())
+        setComplainantName(currentInput.trim())
         break
       case 1:
-        setIssue(currentInput.trim())
+        setCompany(currentInput.trim())
         break
       case 2:
+        setIssue(currentInput.trim())
+        break
+      case 3:
         if (currentInput.trim()) {
           setEvidence([...evidence, { type: 'date', description: 'Date of incident', value: currentInput.trim() }])
         }
         break
-      case 3:
+      case 4:
         if (currentInput.trim()) {
           setEvidence([...evidence, { type: 'reference', description: 'Reference number', value: currentInput.trim() }])
         }
         break
-      case 4:
+      case 5:
         setImpact(currentInput.trim())
         break
-      case 5:
+      case 6:
         setDesiredRemedy(currentInput.trim())
         break
     }
@@ -166,6 +171,7 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
   const handleSubmit = () => {
     const complaint: ComplaintData = {
       id: Date.now().toString(),
+      complainantName,
       company: {
         name: company,
         channel: channel
@@ -296,7 +302,7 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
           </Tabs>
         </div>
 
-        {currentStep >= 2 && evidence.length > 0 && (
+        {currentStep >= 3 && evidence.length > 0 && (
           <div className="space-y-4">
             <h3 className="font-medium">Evidence & Documentation</h3>
             <div className="space-y-2">
@@ -318,22 +324,6 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {currentStep === GUIDED_PROMPTS.length - 1 && (
-          <div className="space-y-4">
-            <Label htmlFor="channel-select">How would you like to send this complaint?</Label>
-            <Select value={channel} onValueChange={(value: 'email' | 'webform' | 'letter') => setChannel(value)}>
-              <SelectTrigger id="channel-select">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="webform">Web Form (copy text)</SelectItem>
-                <SelectItem value="letter">Letter/Document</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         )}
 

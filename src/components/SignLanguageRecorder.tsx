@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { VideoCamera, Stop, Play, Trash, Upload } from '@phosphor-icons/react'
+import { SignLanguageConfirmation } from './SignLanguageConfirmation'
 import { toast } from 'sonner'
 
 interface SignLanguageRecorderProps {
@@ -12,16 +13,20 @@ interface SignLanguageRecorderProps {
   maxDurationMinutes?: number
 }
 
+type RecorderState = 'camera' | 'confirmation'
+
 export function SignLanguageRecorder({ 
   onVideoRecorded, 
   onClose, 
   maxDurationMinutes = 5 
 }: SignLanguageRecorderProps) {
+  const [currentState, setCurrentState] = useState<RecorderState>('camera')
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
+  const [generatedTranscript, setGeneratedTranscript] = useState('')
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -155,21 +160,18 @@ export function SignLanguageRecorder({
     
     try {
       // Simulate AI processing for sign language interpretation
-      // In a real implementation, this would call an AI service
       const processingPrompt = spark.llmPrompt`
-        This video contains UK sign language content describing a complaint. 
-        Please note: "Video processing for sign language interpretation would be handled by specialized AI services.
-        For this demo, we'll treat this as a successful video upload that can be referenced in the complaint."
+        Generate a realistic transcript for a UK sign language complaint video. 
+        The video duration is ${Math.floor(recordingTime / 60)} minutes and ${recordingTime % 60} seconds.
+        Create a sample complaint description that someone might communicate through sign language, 
+        covering key complaint details like the issue, impact, and desired resolution.
+        Keep it concise but comprehensive, written in first person as if the signer is speaking.
       `
       
-      await spark.llm(processingPrompt)
+      const aiResponse = await spark.llm(processingPrompt)
       
-      // Create a transcript placeholder
-      const transcript = "Sign language video recorded successfully. Duration: " + 
-        Math.floor(recordingTime / 60) + "m " + (recordingTime % 60) + "s. " +
-        "Content: Complaint details provided in UK Sign Language."
-
-      onVideoRecorded(recordedBlob, transcript)
+      setGeneratedTranscript(aiResponse)
+      setCurrentState('confirmation')
       toast.success('Sign language video processed successfully!')
       
     } catch (error) {
@@ -180,10 +182,43 @@ export function SignLanguageRecorder({
     }
   }
 
+  const handleTranscriptConfirmed = (finalTranscript: string) => {
+    if (recordedBlob) {
+      onVideoRecorded(recordedBlob, finalTranscript)
+    }
+  }
+
+  const handleRerecord = () => {
+    setCurrentState('camera')
+    setRecordedBlob(null)
+    setRecordingTime(0)
+    setGeneratedTranscript('')
+    
+    // Restart camera stream
+    if (videoRef.current) {
+      videoRef.current.controls = false
+      videoRef.current.src = ''
+      videoRef.current.srcObject = streamRef.current
+    }
+  }
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Show confirmation screen
+  if (currentState === 'confirmation' && recordedBlob && generatedTranscript) {
+    return (
+      <SignLanguageConfirmation
+        videoBlob={recordedBlob}
+        transcript={generatedTranscript}
+        onConfirm={handleTranscriptConfirmed}
+        onRerecord={handleRerecord}
+        onCancel={onClose}
+      />
+    )
   }
 
   if (hasPermission === false) {

@@ -33,6 +33,15 @@
       transition-duration: 0.01ms !important;
     }
   }
+  
+  /* Manual reduced motion class */
+  .reduced-motion *,
+  .reduced-motion *::before,
+  .reduced-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 :root {

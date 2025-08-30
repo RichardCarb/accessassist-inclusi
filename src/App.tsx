@@ -10,17 +10,28 @@ import { ComplaintTracker, ComplaintData } from '@/components/ComplaintTracker'
 import { Plus, Shield, Clock, Users } from '@phosphor-icons/react'
 import { toast, Toaster } from 'sonner'
 
+interface AccessibilitySettings {
+  highContrast: boolean
+  fontSize: 'normal' | 'large' | 'extra-large'
+  reducedMotion: boolean
+  screenReader: boolean
+  voiceEnabled: boolean
+}
+
 type AppView = 'home' | 'intake' | 'draft' | 'escalate'
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('home')
   const [currentComplaint, setCurrentComplaint] = useState<ComplaintData | null>(null)
   const [complaints, setComplaints] = useKV<ComplaintData[]>('complaints', [])
-  const [accessibilitySettings] = useKV('accessibility-settings', {
+  const [accessibilitySettings] = useKV<AccessibilitySettings>('accessibility-settings', {
     voiceEnabled: false,
     highContrast: false,
-    fontSize: 'normal'
+    fontSize: 'normal',
+    reducedMotion: false,
+    screenReader: false
   })
+  const [showAccessibilityControls, setShowAccessibilityControls] = useState(false)
 
   const handleComplaintCreated = (complaint: ComplaintData) => {
     setCurrentComplaint(complaint)
@@ -62,7 +73,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AccessibilityControls />
+      <AccessibilityControls 
+        isOpen={showAccessibilityControls} 
+        onOpenChange={setShowAccessibilityControls} 
+      />
       <Toaster position="top-center" />
       
       {/* Skip to main content link for screen readers */}
@@ -135,7 +149,7 @@ function App() {
                 </div>
               </Card>
 
-              <Card className="text-center p-6">
+                  <Card className="text-center p-6">
                 <div className="space-y-3">
                   <div className="mx-auto w-12 h-12 bg-secondary/10 rounded-full flex items-center justify-center">
                     <Users className="h-6 w-6 text-secondary" />
@@ -144,7 +158,12 @@ function App() {
                   <p className="text-sm text-muted-foreground">
                     Voice, text, high contrast, and screen reader support
                   </p>
-                  <Button variant="outline" className="w-full">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => setShowAccessibilityControls(true)}
+                    aria-label="Open accessibility settings"
+                  >
                     Settings
                   </Button>
                 </div>

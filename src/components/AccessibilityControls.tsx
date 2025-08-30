@@ -15,8 +15,13 @@ interface AccessibilitySettings {
   voiceEnabled: boolean
 }
 
-export function AccessibilityControls() {
-  const [isOpen, setIsOpen] = useState(false)
+interface AccessibilityControlsProps {
+  isOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+}
+
+export function AccessibilityControls({ isOpen: externalIsOpen, onOpenChange }: AccessibilityControlsProps = {}) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false)
   const [settings, setSettings] = useKV<AccessibilitySettings>('accessibility-settings', {
     highContrast: false,
     fontSize: 'normal',
@@ -24,6 +29,10 @@ export function AccessibilityControls() {
     screenReader: false,
     voiceEnabled: false
   })
+
+  // Use external control if provided, otherwise use internal state
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen
+  const setIsOpen = onOpenChange || setInternalIsOpen
 
   const updateSetting = (key: keyof AccessibilitySettings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }))
@@ -37,7 +46,8 @@ export function AccessibilityControls() {
     root.style.fontSize = settings.fontSize === 'large' ? '18px' : settings.fontSize === 'extra-large' ? '20px' : '16px'
   }
 
-  if (!isOpen) {
+  // Only show floating button if not externally controlled
+  if (!isOpen && externalIsOpen === undefined) {
     return (
       <Button
         variant="outline"
@@ -50,6 +60,11 @@ export function AccessibilityControls() {
         <span className="sr-only">Accessibility Controls</span>
       </Button>
     )
+  }
+
+  // Don't render anything if externally controlled and closed
+  if (!isOpen) {
+    return null
   }
 
   return (

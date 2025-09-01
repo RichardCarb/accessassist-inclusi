@@ -155,7 +155,7 @@ export function SignLanguageRecorder({
           signs: gestureResult.recognizedSigns,
         });
         
-        setRealtimeGestures(prev => [...prev.slice(-29), newFrame])
+        setRealtimeGestures(prev => [...prev.slice(-29), newFrame]);
       } else {
         framesSinceLastMotionRef.current++
         if (framesSinceLastMotionRef.current > 10) {

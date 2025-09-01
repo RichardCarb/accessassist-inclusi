@@ -2,13 +2,13 @@
 ## Product Requirements Document
 
 ### Core Purpose & Success
-**Mission Statement**: AccessAssist makes complaint processes inclusive and accessible for all users, particularly those with disabilities, by providing multiple input modalities including UK Sign Language video recording.
+**Mission Statement**: AccessAssist makes complaint processes inclusive and accessible for all users, particularly those with disabilities, by providing multiple input modalities including real-time UK Sign Language recognition with AI-powered hand tracking.
 
 **Success Indicators**: 
 - ≤ 3 minutes to complete a complaint draft
 - 100% screen reader navigability 
 - WCAG 2.2 AA compliance
-- Support for voice, text, and sign language input
+- Support for voice, text, and real-time sign language recognition
 - User confidence ≥ 8/10 in pilot feedback
 
 **Experience Qualities**: Inclusive, empowering, accessible
@@ -38,9 +38,9 @@
 ### Essential Features
 
 #### Multi-Modal Input System
-**What it does**: Provides three input methods - text/typing, voice recognition, and UK Sign Language video recording
-**Why it matters**: Ensures no user is excluded based on their communication preferences or abilities
-**Success criteria**: All three methods successfully capture user input and integrate into complaint generation
+**What it does**: Provides three input methods - text/typing, voice recognition, and real-time UK Sign Language recognition with MediaPipe hand tracking
+**Why it matters**: Ensures no user is excluded based on their communication preferences or abilities, with advanced AI providing immediate feedback during signing
+**Success criteria**: All three methods successfully capture user input, with sign language recognition providing real-time gesture feedback and automatic transcript generation
 
 #### Guided Complaint Intake
 **What it does**: Step-by-step questions that build a complete complaint profile
@@ -126,7 +126,7 @@
 **Screen Reader Support**: Semantic HTML, ARIA labels, clear headings structure
 **Keyboard Navigation**: Full functionality available via keyboard
 **Voice Input**: Web Speech API integration for voice recognition
-**Sign Language Support**: Video recording with camera access and processing
+**Sign Language Support**: Real-time recognition with MediaPipe hand tracking, TensorFlow.js processing, and automatic transcript generation
 **Reduced Motion**: Respects user preferences for reduced motion
 
 ### Edge Cases & Problem Scenarios
@@ -145,12 +145,12 @@
 **Technical Constraints**: 
 - Browser media API availability
 - File storage limitations
-- Processing time for sign language interpretation
+- Processing time for real-time sign language recognition
 
 ### Implementation Considerations
 **Scalability Needs**: 
 - Video storage and processing capabilities
-- AI processing for sign language interpretation
+- AI processing for real-time sign language recognition with gesture accuracy
 - User data privacy and retention
 
 **Testing Focus**: 
@@ -159,13 +159,13 @@
 - Performance with large video files
 
 **Critical Questions**: 
-- How to handle sign language interpretation accuracy?
+- How to handle real-time sign language recognition accuracy and edge cases?
 - What fallbacks for unsupported browsers?
 - How to ensure video privacy and security?
 
 ### Reflection
-This approach uniquely serves disabled users by providing genuine choice in communication methods rather than afterthought accommodations. The combination of voice, text, and sign language input creates truly inclusive access to complaint processes.
+This approach uniquely serves disabled users by providing genuine choice in communication methods rather than afterthought accommodations. The combination of voice, text, and real-time sign language recognition with AI-powered hand tracking creates truly inclusive access to complaint processes.
 
-The focus on guided intake and AI assistance levels the playing field, ensuring all users can create professional, effective complaints regardless of their writing skills or legal knowledge.
+The focus on guided intake and AI assistance levels the playing field, ensuring all users can create professional, effective complaints regardless of their writing skills or legal knowledge. The real-time feedback during sign language input provides immediate validation and builds confidence.
 
 What makes this solution exceptional is treating accessibility as the foundation rather than an add-on, creating an experience that's better for everyone while being essential for many.

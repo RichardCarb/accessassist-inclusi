@@ -144,7 +144,7 @@ function App() {
               <h2 className="text-3xl font-bold">Make Your Voice Heard</h2>
               <p className="text-lg text-muted-foreground">
                 AccessAssist helps you create professional complaint letters with AI assistance. 
-                Designed for everyone - voice input, UK sign language video recording, screen reader support, and plain language guidance.
+                Designed for everyone - voice input, real-time UK sign language recognition with hand tracking, screen reader support, and plain language guidance.
               </p>
             </div>
 
@@ -186,7 +186,7 @@ function App() {
                   </div>
                   <h3 className="font-semibold">Accessibility First</h3>
                   <p className="text-sm text-muted-foreground">
-                    Voice, text, UK sign language video, high contrast, and screen reader support
+                    Voice, text, real-time UK sign language recognition, high contrast, and screen reader support
                   </p>
                   <Button 
                     variant="outline" 
@@ -220,7 +220,7 @@ function App() {
                     <div className="space-y-2">
                       <h4 className="font-medium">1. Guided Intake</h4>
                       <p className="text-sm text-muted-foreground">
-                        Answer simple questions about your issue. Use voice input, type responses, or record in UK Sign Language.
+                        Answer simple questions about your issue. Use voice input, type responses, or use real-time UK Sign Language recognition.
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -250,7 +250,7 @@ function App() {
                   <div className="text-center space-y-2">
                     <p className="text-sm font-medium">Accessibility Commitment</p>
                     <p className="text-xs text-muted-foreground">
-                      WCAG 2.2 AA compliant • Screen reader optimized • Voice input support • UK Sign Language video recording •
+                      WCAG 2.2 AA compliant • Screen reader optimized • Voice input support • Real-time UK Sign Language recognition •
                       High contrast mode • Keyboard navigation • Plain language (Grade 8 level)
                     </p>
                     <p className="text-xs text-muted-foreground">

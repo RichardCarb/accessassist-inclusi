@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Microphone, MicrophoneSlash, Plus, X, Calendar, Hash, FileText, VideoCamera, Type } from '@phosphor-icons/react'
 import { ComplaintData } from './ComplaintTracker'
-import { SignLanguageRecorder } from './SignLanguageRecorder'
+import { RealTimeSignLanguageRecognition } from './RealTimeSignLanguageRecognition'
 import { toast } from 'sonner'
 
 interface ComplaintIntakeProps {
@@ -192,7 +192,7 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
 
   if (showSignRecorder) {
     return (
-      <SignLanguageRecorder
+      <RealTimeSignLanguageRecognition
         onVideoRecorded={handleVideoRecorded}
         onClose={() => setShowSignRecorder(false)}
         maxDurationMinutes={5}
@@ -287,14 +287,14 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
                 <div>
                   <h3 className="font-medium text-lg mb-2">{currentPrompt}</h3>
                   <p className="text-muted-foreground mb-4">
-                    Record your response using UK Sign Language. The video will be processed and included in your complaint.
+                    Record your response using UK Sign Language with real-time AI recognition. Hand landmarks are tracked and signs are automatically recognized.
                   </p>
                   <Button 
                     onClick={() => setShowSignRecorder(true)}
                     className="flex items-center gap-2"
                   >
                     <VideoCamera className="h-4 w-4" />
-                    Record Sign Language Response
+                    Start Real-Time Sign Recognition
                   </Button>
                 </div>
               </div>

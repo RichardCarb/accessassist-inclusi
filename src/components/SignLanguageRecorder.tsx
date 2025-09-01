@@ -476,6 +476,11 @@ Respond with a brief, factual description of what's visible in the frame. Focus 
         throw new Error('Camera not supported in this browser')
       }
 
+      // Check if we're on HTTPS or localhost (required for camera access)
+      if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
+        throw new Error('Camera access requires a secure connection (HTTPS)')
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           width: { ideal: 1280, min: 640 }, 
@@ -491,7 +496,16 @@ Respond with a brief, factual description of what's visible in the frame. Focus 
       
       streamRef.current = stream
       setHasPermission(true)
-      console.log('Camera access granted, video dimensions:', video.videoWidth, 'x', video.videoHeight)
+      
+      // Wait for video to load before logging dimensions
+      if (videoRef.current) {
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            console.log('Camera access granted, video dimensions:', videoRef.current.videoWidth, 'x', videoRef.current.videoHeight)
+          }
+        }
+      }
+      
       toast.success('Camera access granted - Wave hands to test gesture detection!')
     } catch (error) {
       console.error('Error accessing camera:', error)
@@ -499,18 +513,22 @@ Respond with a brief, factual description of what's visible in the frame. Focus 
       
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-          toast.error('Camera permission denied. Please allow camera access to record sign language.')
+          toast.error('Camera permission denied. Please click "Allow" when prompted or check your browser settings.')
         } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-          toast.error('No camera found. Please connect a camera to use sign language recording.')
+          toast.error('No camera found. Please connect a camera device to use sign language recording.')
         } else if (error.name === 'NotSupportedError') {
-          toast.error('Camera not supported in this browser. Please try a different browser.')
+          toast.error('Camera not supported in this browser. Please try Chrome, Firefox, or Safari.')
         } else if (error.name === 'NotReadableError') {
-          toast.error('Camera is being used by another application. Please close other apps using the camera.')
+          toast.error('Camera is being used by another application. Please close other camera apps and try again.')
+        } else if (error.message.includes('secure connection')) {
+          toast.error('Camera access requires HTTPS. Please use the secure version of this site.')
+        } else if (error.message.includes('not supported')) {
+          toast.error('Camera not supported in this browser. Please try a modern browser like Chrome or Firefox.')
         } else {
           toast.error('Camera access failed. Please check your camera settings and try again.')
         }
       } else {
-        toast.error('Camera access failed. Please allow camera permissions to use sign language recording.')
+        toast.error('Camera access failed. Please allow camera permissions and ensure your camera is working.')
       }
     }
   }
@@ -895,24 +913,37 @@ Note: This template is provided because automatic video analysis was not availab
             <div className="bg-muted/50 p-4 rounded-lg mb-4 text-sm text-left">
               <h4 className="font-medium mb-2">How to enable camera access:</h4>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Click the camera icon in your browser's address bar</li>
-                <li>• Select "Allow" for camera and microphone</li>
-                <li>• If blocked, click "Settings" and enable permissions</li>
-                <li>• Refresh the page after changing permissions</li>
+                <li>• Look for the camera/microphone icon in your browser's address bar</li>
+                <li>• Click on it and select "Allow" for both camera and microphone</li>
+                <li>• If you see a popup, click "Allow" or "Grant permission"</li>
+                <li>• If already blocked, click the settings icon and enable permissions</li>
+                <li>• Try refreshing the page after changing permissions</li>
+              </ul>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-sm text-left">
+              <h4 className="font-medium text-yellow-800 mb-2">Troubleshooting:</h4>
+              <ul className="space-y-1 text-yellow-700">
+                <li>• Make sure no other apps are using your camera</li>
+                <li>• Check that your camera is properly connected</li>
+                <li>• Try using Chrome, Firefox, or Safari browsers</li>
+                <li>• Ensure you're on a secure (HTTPS) connection</li>
+                <li>• Check browser settings: Privacy & Security → Site Settings → Camera</li>
               </ul>
             </div>
             
             <div className="space-x-2">
               <Button onClick={requestCameraPermission}>
-                Try Again
+                <VideoCamera className="h-4 w-4 mr-2" />
+                Request Camera Access
               </Button>
               <Button variant="outline" onClick={onClose}>
-                Cancel
+                Use Text Instead
               </Button>
             </div>
             
             <p className="text-xs text-muted-foreground mt-3">
-              Having trouble? You can continue with text input instead.
+              Having trouble? You can continue with text input or come back to try sign language recording later.
             </p>
           </div>
         </CardContent>

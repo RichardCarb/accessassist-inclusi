@@ -27,7 +27,7 @@ export function AccessibilityControls({
   onOpenChange,
   settings: externalSettings,
   onSettingsChange 
-}: AccessibilityControlsProps = {}) {
+}: AccessibilityControlsProps) {
   const [internalIsOpen, setInternalIsOpen] = useState(false)
   const [internalSettings, setInternalSettings] = useKV<AccessibilitySettings>('accessibility-settings', {
     highContrast: false,

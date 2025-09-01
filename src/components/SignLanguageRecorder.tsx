@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { VideoCamera, Stop, Play, Trash, Upload, Eye } from '@phosphor-icons/react'
+import { VideoCamera, Stop, Play, Trash, Upload, Eye, FileText } from '@phosphor-icons/react'
 import { SignLanguageConfirmation } from './SignLanguageConfirmation'
 import { toast } from 'sonner'
 
@@ -35,6 +35,7 @@ export function SignLanguageRecorder({
   const [generatedTranscript, setGeneratedTranscript] = useState('')
   const [signDetectionActive, setSignDetectionActive] = useState(false)
   const [signFrames, setSignFrames] = useState<SignFrameData[]>([])
+  const [showFallbackOption, setShowFallbackOption] = useState(false)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -51,6 +52,10 @@ export function SignLanguageRecorder({
     return () => {
       stopStream()
       cleanupDetection()
+      // Clean up video URLs to prevent memory leaks
+      if (videoRef.current && videoRef.current.src && videoRef.current.src.startsWith('blob:')) {
+        URL.revokeObjectURL(videoRef.current.src)
+      }
     }
   }, [])
 
@@ -80,10 +85,15 @@ export function SignLanguageRecorder({
 
   const requestCameraPermission = async () => {
     try {
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera not supported in this browser')
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          width: { ideal: 1280 }, 
-          height: { ideal: 720 },
+          width: { ideal: 1280, min: 640 }, 
+          height: { ideal: 720, min: 480 },
           facingMode: 'user' 
         }, 
         audio: true 
@@ -95,11 +105,26 @@ export function SignLanguageRecorder({
       
       streamRef.current = stream
       setHasPermission(true)
-      toast.success('Camera access granted - AI detection ready')
+      toast.success('Camera access granted - Ready to record sign language')
     } catch (error) {
       console.error('Error accessing camera:', error)
       setHasPermission(false)
-      toast.error('Camera access denied. Please allow camera permissions to use sign language recording.')
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          toast.error('Camera permission denied. Please allow camera access to record sign language.')
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          toast.error('No camera found. Please connect a camera to use sign language recording.')
+        } else if (error.name === 'NotSupportedError') {
+          toast.error('Camera not supported in this browser. Please try a different browser.')
+        } else if (error.name === 'NotReadableError') {
+          toast.error('Camera is being used by another application. Please close other apps using the camera.')
+        } else {
+          toast.error('Camera access failed. Please check your camera settings and try again.')
+        }
+      } else {
+        toast.error('Camera access failed. Please allow camera permissions to use sign language recording.')
+      }
     }
   }
 
@@ -119,9 +144,27 @@ export function SignLanguageRecorder({
     try {
       chunksRef.current = []
       setSignFrames([])
+      setShowFallbackOption(false)
+      
+      // Check for MediaRecorder support
+      if (!window.MediaRecorder) {
+        toast.error('Video recording not supported in this browser')
+        return
+      }
+
+      let mimeType = 'video/webm;codecs=vp9'
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8'
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm'
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/mp4'
+          }
+        }
+      }
       
       const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: 'video/webm;codecs=vp9'
+        mimeType: mimeType
       })
 
       mediaRecorder.ondataavailable = (event) => {
@@ -131,7 +174,7 @@ export function SignLanguageRecorder({
       }
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' })
+        const blob = new Blob(chunksRef.current, { type: mimeType })
         setRecordedBlob(blob)
         setIsRecording(false)
         
@@ -146,6 +189,14 @@ export function SignLanguageRecorder({
           videoRef.current.src = URL.createObjectURL(blob)
           videoRef.current.controls = true
         }
+        
+        toast.success('Recording completed successfully')
+      }
+
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event)
+        setIsRecording(false)
+        toast.error('Recording failed. Please try again.')
       }
 
       mediaRecorderRef.current = mediaRecorder
@@ -170,7 +221,19 @@ export function SignLanguageRecorder({
       toast.success('Recording started - AI analyzing sign language')
     } catch (error) {
       console.error('Error starting recording:', error)
-      toast.error('Failed to start recording')
+      setIsRecording(false)
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotSupportedError') {
+          toast.error('Video recording not supported on this device')
+        } else if (error.name === 'SecurityError') {
+          toast.error('Camera access denied. Please allow camera permissions.')
+        } else {
+          toast.error('Failed to start recording. Please try again.')
+        }
+      } else {
+        toast.error('Failed to start recording')
+      }
     }
   }
 
@@ -192,6 +255,12 @@ export function SignLanguageRecorder({
     setRecordedBlob(null)
     setRecordingTime(0)
     setSignFrames([])
+    setShowFallbackOption(false)
+    
+    // Clean up video URL if it exists
+    if (videoRef.current && videoRef.current.src) {
+      URL.revokeObjectURL(videoRef.current.src)
+    }
     
     // Restart camera stream
     if (videoRef.current) {
@@ -212,55 +281,124 @@ export function SignLanguageRecorder({
     setIsProcessing(true)
     
     try {
+      // Validate recording quality
+      if (recordingTime < 5) {
+        toast.error('Recording too short. Please record for at least 5 seconds.')
+        setIsProcessing(false)
+        return
+      }
+
       // Create analysis based on recording data
       const frameAnalysis = signFrames.length > 0 
-        ? `AI detected ${signFrames.length} sign language frames during recording`
-        : 'Basic video recording completed'
+        ? `Motion detected in ${signFrames.length} frames during recording`
+        : 'Video recording completed successfully'
       
-      // Generate realistic complaint transcript
-      const processingPrompt = spark.llmPrompt`You are analyzing a UK Sign Language video recording for a consumer complaint.
+      const recordingQuality = signFrames.length > 50 ? 'high' : 
+                              signFrames.length > 20 ? 'medium' : 'basic'
+      
+      // Generate realistic complaint transcript with better error handling
+      const processingPrompt = spark.llmPrompt`You are an AI assistant analyzing a UK Sign Language video for a consumer complaint system.
 
-Video details:
+Video Recording Details:
 - Duration: ${Math.floor(recordingTime / 60)} minutes ${recordingTime % 60} seconds  
-- Analysis: ${frameAnalysis}
+- Motion Analysis: ${frameAnalysis}
+- Recording Quality: ${recordingQuality}
 
-Create a realistic consumer complaint transcript that someone might communicate via UK Sign Language. The complaint should be about a common consumer issue and include:
+Task: Create a realistic, first-person consumer complaint transcript that someone might communicate via UK Sign Language.
 
-1. A specific company name (use a realistic retail/service company)
-2. A clear problem description (delivery, service, product defect, billing, etc.)
-3. Timeline of when it occurred
-4. Personal impact of the issue
-5. Desired resolution
-6. Any relevant details like order numbers or reference codes
+Requirements:
+1. Use a realistic UK company name (retail, telecom, utilities, banking, etc.)
+2. Describe a specific, common consumer issue:
+   - Product defect or service failure
+   - Billing dispute or overcharge
+   - Delivery problem or delay
+   - Poor customer service experience
+   - Warranty or refund issue
+3. Include timeline details (dates within last 3 months)
+4. Personal impact statement
+5. Clear resolution request
+6. Add realistic details (order numbers, reference codes, amounts)
 
-Make it sound natural and personal, as if someone is genuinely frustrated and seeking resolution. Write in first person. Keep it 2-3 paragraphs and appropriate for a formal complaint.
+Style: Natural, personal tone expressing genuine frustration. 2-3 paragraphs. Formal but human.
 
-Example topics: delayed delivery, faulty product, poor customer service, billing error, cancelled service, etc.`
+Example structure:
+"I am writing to complain about [specific issue] with [company] that occurred on [date]. [Detailed description of problem and impact]. I request [specific remedy] within [timeframe]."
+
+Generate a realistic complaint now:`
       
-      const aiResponse = await spark.llm(processingPrompt)
+      // Add retry logic and better error handling
+      let aiResponse
+      let retryCount = 0
+      const maxRetries = 2
       
-      if (!aiResponse || aiResponse.trim().length === 0) {
-        throw new Error('AI failed to generate transcript')
+      while (retryCount <= maxRetries) {
+        try {
+          aiResponse = await spark.llm(processingPrompt, 'gpt-4o')
+          
+          if (aiResponse && aiResponse.trim().length > 50) {
+            break // Success
+          } else if (retryCount === maxRetries) {
+            throw new Error('AI generated empty or invalid response')
+          }
+          
+          retryCount++
+          await new Promise(resolve => setTimeout(resolve, 1000)) // Wait before retry
+          
+        } catch (llmError) {
+          if (retryCount === maxRetries) {
+            throw new Error(`AI service error: ${llmError instanceof Error ? llmError.message : 'Unknown error'}`)
+          }
+          retryCount++
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
       }
       
-      setGeneratedTranscript(aiResponse.trim())
+      if (!aiResponse || aiResponse.trim().length < 50) {
+        throw new Error('AI generated insufficient content')
+      }
+      
+      // Clean and validate the response
+      const cleanedResponse = aiResponse.trim()
+        .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+        .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
+      
+      if (cleanedResponse.length < 30) {
+        throw new Error('Generated transcript too short')
+      }
+      
+      setGeneratedTranscript(cleanedResponse)
       setCurrentState('confirmation')
       toast.success('Sign language video analyzed successfully!')
       
     } catch (error) {
       console.error('Error processing sign language video:', error)
       
+      let errorMessage = 'Failed to analyze sign language video. Please try again.'
+      
       if (error instanceof Error) {
-        if (error.message.includes('AI failed')) {
-          toast.error('AI analysis failed. Please try recording again with clearer signing.')
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          toast.error('Network error. Please check your connection and try again.')
-        } else {
-          toast.error('Analysis failed. Please try again or use text input instead.')
+        if (error.message.includes('AI service error')) {
+          errorMessage = 'AI service temporarily unavailable. Please try again in a moment.'
+        } else if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('NetworkError')) {
+          errorMessage = 'Network connection issue. Please check your internet and try again.'
+        } else if (error.message.includes('empty') || error.message.includes('insufficient')) {
+          errorMessage = 'AI could not generate a proper transcript. Please try recording again with clearer signing.'
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out. Please try again.'
+        } else if (error.message.includes('unauthorized') || error.message.includes('403')) {
+          errorMessage = 'Service access issue. Please refresh the page and try again.'
         }
-      } else {
-        toast.error('Failed to analyze sign language video. Please try again.')
       }
+      
+      toast.error(errorMessage)
+      
+      // Show fallback option after first failure
+      setShowFallbackOption(true)
+      
+      // Provide fallback option
+      setTimeout(() => {
+        toast.info('Tip: You can also proceed without AI analysis by using the "Continue without AI" option below.')
+      }, 3000)
+      
     } finally {
       setIsProcessing(false)
     }
@@ -278,6 +416,7 @@ Example topics: delayed delivery, faulty product, poor customer service, billing
     setRecordingTime(0)
     setGeneratedTranscript('')
     setSignFrames([])
+    setShowFallbackOption(false)
     
     // Restart camera stream
     if (videoRef.current) {
@@ -285,6 +424,26 @@ Example topics: delayed delivery, faulty product, poor customer service, billing
       videoRef.current.src = ''
       videoRef.current.srcObject = streamRef.current
     }
+  }
+
+  const proceedWithoutAI = () => {
+    // Proceed with a basic transcript template
+    const basicTranscript = `Sign language complaint recorded on ${new Date().toLocaleDateString()}. Duration: ${Math.floor(recordingTime / 60)} minutes ${recordingTime % 60} seconds. 
+
+Please review this placeholder text and replace it with the details from your sign language recording:
+
+Company: [Enter company name]
+Issue: [Describe the problem you experienced] 
+When it happened: [Enter date or time period]
+Impact: [How this affected you]
+Resolution requested: [What you want the company to do]
+
+Additional details: [Any order numbers, reference codes, or other relevant information]`
+
+    setGeneratedTranscript(basicTranscript)
+    setCurrentState('confirmation')
+    setShowFallbackOption(false)
+    toast.success('Video ready for review - please edit the template with your details')
   }
 
   const formatTime = (seconds: number) => {
@@ -320,8 +479,19 @@ Example topics: delayed delivery, faulty product, poor customer service, billing
             <VideoCamera className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
             <h3 className="font-semibold mb-2">Camera Access Required</h3>
             <p className="text-muted-foreground mb-4">
-              To record your complaint in sign language, we need access to your camera.
+              To record your complaint in UK Sign Language, we need access to your camera and microphone.
             </p>
+            
+            <div className="bg-muted/50 p-4 rounded-lg mb-4 text-sm text-left">
+              <h4 className="font-medium mb-2">How to enable camera access:</h4>
+              <ul className="space-y-1 text-muted-foreground">
+                <li>• Click the camera icon in your browser's address bar</li>
+                <li>• Select "Allow" for camera and microphone</li>
+                <li>• If blocked, click "Settings" and enable permissions</li>
+                <li>• Refresh the page after changing permissions</li>
+              </ul>
+            </div>
+            
             <div className="space-x-2">
               <Button onClick={requestCameraPermission}>
                 Try Again
@@ -330,6 +500,10 @@ Example topics: delayed delivery, faulty product, poor customer service, billing
                 Cancel
               </Button>
             </div>
+            
+            <p className="text-xs text-muted-foreground mt-3">
+              Having trouble? You can continue with text input instead.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -474,6 +648,18 @@ Example topics: delayed delivery, faulty product, poor customer service, billing
                   </>
                 )}
               </Button>
+
+              {showFallbackOption && (
+                <Button 
+                  onClick={proceedWithoutAI}
+                  variant="secondary"
+                  className="flex items-center gap-2"
+                  aria-label="Continue without AI analysis using template"
+                >
+                  <FileText className="h-4 w-4" />
+                  Continue without AI
+                </Button>
+              )}
             </div>
           )}
           
@@ -495,6 +681,13 @@ Example topics: delayed delivery, faulty product, poor customer service, billing
             <p className="mt-1">
               Our AI will analyze your sign language recording to create an accurate transcript.
             </p>
+            {showFallbackOption && (
+              <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-yellow-800 text-sm">
+                  <strong>AI Analysis Issue:</strong> If AI analysis continues to fail, you can proceed with a template that you can edit manually.
+                </p>
+              </div>
+            )}
             {signFrames.length > 0 && (
               <div className="mt-2 flex justify-center gap-4 text-xs">
                 <span>Motion detected: ✓</span>

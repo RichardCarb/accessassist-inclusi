@@ -105,7 +105,7 @@ function App() {
         isOpen={showAccessibilityControls} 
         onOpenChange={setShowAccessibilityControls}
         settings={accessibilitySettings}
-        onSettingsChange={setAccessibilitySettings}
+        onSettingsChange={(newSettings) => setAccessibilitySettings(() => newSettings)}
       />
       <Toaster position="top-center" />
       

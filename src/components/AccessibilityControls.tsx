@@ -47,7 +47,7 @@ export function AccessibilityControls({
     if (onSettingsChange) {
       onSettingsChange(newSettings)
     } else {
-      setInternalSettings(newSettings)
+      setInternalSettings(() => newSettings)
     }
   }
 

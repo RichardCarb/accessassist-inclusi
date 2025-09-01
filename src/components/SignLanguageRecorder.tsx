@@ -153,7 +153,7 @@ export function SignLanguageRecorder({
           gestureType: gestureResult.gestureType,
           handPosition: gestureResult.handPosition,
           signs: gestureResult.recognizedSigns,
-        })
+        });
         
         setRealtimeGestures(prev => [...prev.slice(-29), newFrame])
       } else {

@@ -102,10 +102,10 @@ export function SignLanguageConfirmation({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <VideoCamera className="h-5 w-5" />
-          Review Sign Language Translation
+          Review and Complete Template
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Review the AI-generated transcript from analyzing your actual UK Sign Language video. Edit if needed and use "Read Aloud" to hear it.
+          Template provided based on your UK Sign Language video recording. Please complete with the actual content from your signing.
         </p>
       </CardHeader>
       
@@ -125,16 +125,16 @@ export function SignLanguageConfirmation({
               />
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-green-600 border-green-600">
+              <Badge variant="outline" className="text-blue-600 border-blue-600">
                 <CheckCircle className="h-3 w-3 mr-1" />
-                Video Processed
+                Template Ready
               </Badge>
             </div>
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-medium">AI Translation</h3>
+              <h3 className="font-medium">Template to Complete</h3>
               <div className="flex gap-2">
                 {!isReadingAloud ? (
                   <Button
@@ -165,13 +165,13 @@ export function SignLanguageConfirmation({
             <Textarea
               value={editedTranscript}
               onChange={(e) => setEditedTranscript(e.target.value)}
-              placeholder="AI-generated transcript from your sign language video..."
+              placeholder="Please complete this template with the actual content from your sign language video..."
               className="min-h-[200px] resize-none"
-              aria-label="Edit transcript from sign language video"
+              aria-label="Complete template with your sign language content"
             />
             
             <p className="text-xs text-muted-foreground">
-              AI has analyzed your actual sign language video content. Review and edit for accuracy before proceeding.
+              Template provided for manual completion. Please replace all bracketed sections with your actual sign language content.
             </p>
           </div>
         </div>
@@ -189,7 +189,7 @@ export function SignLanguageConfirmation({
               </div>
             </div>
             <p className="text-sm text-blue-700 mt-1">
-              Listen to ensure the transcript matches your intended message
+              Listen to your template and complete with actual sign language content
             </p>
           </div>
         )}
@@ -220,10 +220,10 @@ export function SignLanguageConfirmation({
             onClick={handleConfirm}
             disabled={!editedTranscript.trim()}
             className="flex items-center gap-2"
-            aria-label="Confirm and use this transcript"
+            aria-label="Confirm and use this completed text"
           >
             <CheckCircle className="h-4 w-4" />
-            Use This Text
+            Use This Completed Text
           </Button>
         </div>
 

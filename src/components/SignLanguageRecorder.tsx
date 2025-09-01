@@ -210,126 +210,11 @@ export function SignLanguageRecorder({
     }
   }
 
-  // Analyze the actual video content
-  const analyzeVideoContent = async (videoBlob: Blob): Promise<{description: string, context: string[]}> => {
-    try {
-      // Create a video element to extract frames
-      const videoUrl = URL.createObjectURL(videoBlob)
-      const video = document.createElement('video')
-      video.src = videoUrl
-      video.muted = true
-      
-      return new Promise((resolve, reject) => {
-        video.onloadeddata = async () => {
-          try {
-            // Extract multiple frames for analysis
-            const canvas = document.createElement('canvas')
-            const ctx = canvas.getContext('2d')
-            if (!ctx) {
-              resolve({ description: 'Video analysis not available', context: [] })
-              return
-            }
-            
-            canvas.width = video.videoWidth
-            canvas.height = video.videoHeight
-            
-            // Extract frames at different points in the video
-            const framePromises = []
-            const numFrames = Math.min(5, Math.floor(video.duration)) // Up to 5 frames
-            
-            for (let i = 0; i < numFrames; i++) {
-              video.currentTime = (i / numFrames) * video.duration
-              await new Promise(resolve => {
-                video.onseeked = () => resolve(true)
-              })
-              
-              // Draw frame to canvas
-              ctx.drawImage(video, 0, 0)
-              const imageData = canvas.toDataURL('image/jpeg', 0.8)
-              
-              // Send frame to AI for analysis
-              const frameAnalysisPrompt = spark.llmPrompt`Analyze this image frame from a UK Sign Language video recording for a consumer complaint system.
-
-Image: The frame shows a person communicating in UK Sign Language.
-
-Task: Describe what you can observe in this frame that might indicate:
-1. The type of complaint topic (retail, service, product, billing, etc.)
-2. Emotional context (frustrated, calm, urgent, etc.)
-3. Any gestures that suggest specific concepts (money, time, problem, company, etc.)
-4. Setting or context clues
-
-Respond with a brief, factual description of what's visible in the frame. Focus on observable elements that could inform a complaint transcript.`
-
-              framePromises.push(spark.llm(frameAnalysisPrompt, 'gpt-4o'))
-            }
-            
-            // Wait for all frame analyses
-            const frameAnalyses = await Promise.all(framePromises)
-            
-            // Combine analyses into overall video description
-            const combinedAnalysis = frameAnalyses.filter(analysis => analysis && analysis.trim()).join(' ')
-            
-            // Extract context keywords
-            const contextKeywords = []
-            const lowerAnalysis = combinedAnalysis.toLowerCase()
-            
-            if (lowerAnalysis.includes('money') || lowerAnalysis.includes('payment') || lowerAnalysis.includes('billing')) {
-              contextKeywords.push('financial')
-            }
-            if (lowerAnalysis.includes('frustrated') || lowerAnalysis.includes('angry') || lowerAnalysis.includes('upset')) {
-              contextKeywords.push('frustrated')
-            }
-            if (lowerAnalysis.includes('product') || lowerAnalysis.includes('item') || lowerAnalysis.includes('goods')) {
-              contextKeywords.push('product-related')
-            }
-            if (lowerAnalysis.includes('service') || lowerAnalysis.includes('staff') || lowerAnalysis.includes('customer')) {
-              contextKeywords.push('service-related')
-            }
-            if (lowerAnalysis.includes('urgent') || lowerAnalysis.includes('immediate') || lowerAnalysis.includes('quick')) {
-              contextKeywords.push('urgent')
-            }
-            
-            URL.revokeObjectURL(videoUrl)
-            
-            resolve({
-              description: combinedAnalysis || 'Sign language communication recorded',
-              context: contextKeywords
-            })
-            
-          } catch (error) {
-            console.error('Error analyzing video frames:', error)
-            URL.revokeObjectURL(videoUrl)
-            resolve({ 
-              description: 'Sign language gestures and expressions detected', 
-              context: [] 
-            })
-          }
-        }
-        
-        video.onerror = () => {
-          URL.revokeObjectURL(videoUrl)
-          resolve({ 
-            description: 'Sign language communication recorded', 
-            context: [] 
-          })
-        }
-        
-        // Timeout after 10 seconds
-        setTimeout(() => {
-          URL.revokeObjectURL(videoUrl)
-          resolve({ 
-            description: 'Sign language recording analyzed', 
-            context: [] 
-          })
-        }, 10000)
-      })
-      
-    } catch (error) {
-      console.error('Video analysis error:', error)
-      return { 
-        description: 'Sign language content detected in video', 
-        context: [] 
-      }
+  // Record technical details about the video without attempting content analysis
+  const recordVideoDetails = (videoBlob: Blob): {description: string, context: string[]} => {
+    return {
+      description: `UK Sign Language video recorded - Duration: ${Math.floor(recordingTime / 60)}m ${recordingTime % 60}s - Motion detected in ${signFrames.filter(f => f.hasMovement).length} frames - ${realtimeGestures.length} gesture patterns recognized`,
+      context: ['sign-language-recording']
     }
   }
 
@@ -757,117 +642,50 @@ Respond with a brief, factual description of what's visible in the frame. Focus 
         return
       }
 
-      // Analyze the actual video data
-      const videoAnalysis = await analyzeVideoContent(recordedBlob)
+      // Record technical details about the video
+      const videoDetails = recordVideoDetails(recordedBlob)
       
-      // Create analysis based on actual video content and real-time gestures
-      const gestureAnalysis = realtimeGestures.length > 0 
-        ? `Real-time detected signs: ${realtimeGestures.join(', ')}`
-        : `Motion patterns detected in ${signFrames.length} frames`
+      // Don't attempt AI transcript generation - provide template only
+      const recordingDate = new Date().toLocaleDateString()
+      const detectedSigns = realtimeGestures.length > 0 ? 
+        `\n\nGesture patterns detected during recording: ${realtimeGestures.slice(0, 10).join(', ')}` : ''
       
-      const videoDescription = videoAnalysis.description || 'Sign language gestures and expressions recorded'
-      const detectedContext = videoAnalysis.context || []
-      
-      // Generate transcript based on actual video analysis
-      const processingPrompt = spark.llmPrompt`You are analyzing an actual UK Sign Language video recording for a consumer complaint system.
+      // Create template based only on recording metadata
+      const templateTranscript = `UK Sign Language video recorded on ${recordingDate}
 
-ACTUAL VIDEO ANALYSIS:
+Video Details:
 - Duration: ${Math.floor(recordingTime / 60)} minutes ${recordingTime % 60} seconds
-- Video content description: ${videoDescription}
-- Motion analysis: ${gestureAnalysis}
-- Frame analysis: ${signFrames.length} total frames, ${signFrames.filter(f => f.hasMovement).length} with significant motion
-- Real-time detection: ${realtimeGestures.length > 0 ? `${realtimeGestures.length} signs recognized during recording` : 'Basic motion tracking only'}
-${detectedContext.length > 0 ? `- Visual context clues: ${detectedContext.join(', ')}` : ''}
+- Motion frames detected: ${signFrames.filter(f => f.hasMovement).length} out of ${signFrames.length} total frames${detectedSigns}
 
-IMPORTANT: This video contains ACTUAL sign language communication about a real complaint. You must create a transcript that could realistically represent what was signed, not a generic template.
+IMPORTANT: Please replace the sections below with the actual content from your sign language recording.
 
-Task: Generate a realistic first-person consumer complaint transcript based on the video analysis above.
+Company Name: [Enter the name of the company you signed about]
 
-Requirements:
-1. Base the complaint on the visual analysis and detected context
-2. Use realistic UK company (if context suggests retail/service/telecom etc.)
-3. Include specific, believable details:
-   - Timeline (within last 3 months)
-   - Specific issue type based on detected signs/context
-   - Personal impact
-   - Clear resolution request
-4. Tone should match sign language communication (direct, personal)
-5. 2-3 paragraphs, professional but genuine
+Issue Description: [Describe the specific problem you communicated in sign language - what went wrong? What product or service was involved?]
 
-Generate the actual transcript now:`
-      
-      // Add retry logic and better error handling
-      let aiResponse
-      let retryCount = 0
-      const maxRetries = 2
-      
-      while (retryCount <= maxRetries) {
-        try {
-          aiResponse = await spark.llm(processingPrompt, 'gpt-4o')
-          
-          if (aiResponse && aiResponse.trim().length > 50) {
-            break // Success
-          } else if (retryCount === maxRetries) {
-            throw new Error('AI generated empty or invalid response')
-          }
-          
-          retryCount++
-          await new Promise(resolve => setTimeout(resolve, 1000)) // Wait before retry
-          
-        } catch (llmError) {
-          if (retryCount === maxRetries) {
-            throw new Error(`AI service error: ${llmError instanceof Error ? llmError.message : 'Unknown error'}`)
-          }
-          retryCount++
-          await new Promise(resolve => setTimeout(resolve, 1000))
-        }
-      }
-      
-      if (!aiResponse || aiResponse.trim().length < 50) {
-        throw new Error('AI generated insufficient content based on video analysis')
-      }
-      
-      // Clean and validate the response
-      const cleanedResponse = aiResponse.trim()
-        .replace(/^["']|["']$/g, '') // Remove surrounding quotes
-        .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
-      
-      if (cleanedResponse.length < 30) {
-        throw new Error('Generated transcript from video analysis too short')
-      }
-      
-      setGeneratedTranscript(cleanedResponse)
+When it happened: [Enter the date or time period you mentioned in your recording]
+
+How it affected you: [Explain the impact as you expressed it - financial loss, inconvenience, time wasted, etc.]
+
+What you want them to do: [State your requested resolution - refund, replacement, repair, apology, etc.]
+
+Additional Details: [Include any specific information you signed about - order numbers, reference codes, amounts, names of staff members, etc.]
+
+Contact Information: [Your preferred contact method as you indicated]
+
+Note: This template is provided for you to fill in with the actual content from your sign language recording. No AI analysis of sign language content was performed - only motion detection for technical verification.`
+
+      setGeneratedTranscript(templateTranscript)
       setCurrentState('confirmation')
-      toast.success('Video analyzed successfully - transcript generated from actual signing!')
+      toast.success('Video recorded successfully - please edit the template with your actual sign language content!')
       
     } catch (error) {
-      console.error('Error processing sign language video:', error)
+      console.error('Error processing video:', error)
       
-      let errorMessage = 'Failed to analyze sign language video. Please try again.'
+      toast.error('Error processing video recording. Please try again.')
       
-      if (error instanceof Error) {
-        if (error.message.includes('AI service error')) {
-          errorMessage = 'AI video analysis service temporarily unavailable. Please try again.'
-        } else if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('NetworkError')) {
-          errorMessage = 'Network connection issue during video analysis. Please check your internet and try again.'
-        } else if (error.message.includes('empty') || error.message.includes('insufficient')) {
-          errorMessage = 'Could not generate transcript from video analysis. Please try recording again with clearer signing.'
-        } else if (error.message.includes('timeout')) {
-          errorMessage = 'Video analysis timed out. Please try again.'
-        } else if (error.message.includes('unauthorized') || error.message.includes('403')) {
-          errorMessage = 'Video analysis service access issue. Please refresh the page and try again.'
-        }
-      }
-      
-      toast.error(errorMessage)
-      
-      // Show fallback option after first failure
+      // Show fallback option
       setShowFallbackOption(true)
-      
-      // Provide fallback option
-      setTimeout(() => {
-        toast.info('Tip: You can proceed with a template if video analysis continues to fail.')
-      }, 3000)
       
     } finally {
       setIsProcessing(false)
@@ -900,31 +718,39 @@ Generate the actual transcript now:`
   }
 
   const proceedWithoutAI = () => {
-    // Proceed with a basic transcript template based on what was actually recorded
+    // Provide template based only on recording metadata
     const recordingDate = new Date().toLocaleDateString()
     const detectedSigns = realtimeGestures.length > 0 ? 
-      `\n\nSigns detected during recording: ${realtimeGestures.slice(0, 10).join(', ')}` : ''
+      `\n\nGesture patterns detected: ${realtimeGestures.slice(0, 10).join(', ')}` : ''
     
-    const basicTranscript = `UK Sign Language complaint recorded on ${recordingDate}. 
-Duration: ${Math.floor(recordingTime / 60)} minutes ${recordingTime % 60} seconds.
-${detectedSigns}
+    const basicTranscript = `UK Sign Language video recorded on ${recordingDate}
 
-Please review and edit this template with the actual details from your sign language recording:
+Recording Details:
+- Duration: ${Math.floor(recordingTime / 60)} minutes ${recordingTime % 60} seconds
+- Motion detected in ${signFrames.filter(f => f.hasMovement).length} frames${detectedSigns}
+
+TEMPLATE - Please fill in with your actual sign language content:
 
 Company: [Enter the company name you signed about]
-Issue: [Describe the specific problem you communicated] 
+
+Issue: [Describe the specific problem you communicated in sign language] 
+
 When it happened: [Enter the date or time period you mentioned]
+
 Impact: [How this issue affected you as you expressed]
-Resolution requested: [What remedy you asked for]
+
+Resolution requested: [What remedy you asked for in your signing]
 
 Additional details: [Any specific information like order numbers, amounts, or reference codes you signed about]
 
-Note: This template is provided because automatic video analysis was not available. Please replace all bracketed sections with the actual content from your sign language recording.`
+Contact preference: [How you prefer to be contacted as you indicated]
+
+IMPORTANT: This is only a template. Please replace all sections in brackets with the actual content from your sign language recording. No AI analysis of sign language content was performed.`
 
     setGeneratedTranscript(basicTranscript)
     setCurrentState('confirmation')
     setShowFallbackOption(false)
-    toast.success('Template ready - please edit with your actual sign language content')
+    toast.success('Template ready - please fill in with your actual sign language content')
   }
 
   const formatTime = (seconds: number) => {
@@ -1175,12 +1001,12 @@ Note: This template is provided because automatic video analysis was not availab
                 {isProcessing ? (
                   <>
                     <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                    Analyzing Recording...
+                    Preparing Template...
                   </>
                 ) : (
                   <>
                     <Upload className="h-4 w-4" />
-                    Analyze Video ({realtimeGestures.length} signs detected)
+                    Process Video ({realtimeGestures.length} patterns detected)
                   </>
                 )}
               </Button>
@@ -1190,10 +1016,10 @@ Note: This template is provided because automatic video analysis was not availab
                   onClick={proceedWithoutAI}
                   variant="secondary"
                   className="flex items-center gap-2"
-                  aria-label="Continue without AI analysis using template"
+                  aria-label="Use template instead"
                 >
                   <FileText className="h-4 w-4" />
-                  Continue without AI
+                  Use Template
                 </Button>
               )}
             </div>
@@ -1283,33 +1109,33 @@ Note: This template is provided because automatic video analysis was not availab
               Video recorded: {formatTime(recordingTime)} • {signFrames.filter(f => f.hasMovement).length} motion frames • {realtimeGestures.length} signs recognized
             </p>
             <p className="mt-1">
-              Ready for AI video analysis - frames will be extracted and analyzed to generate an accurate transcript.
+              Video recorded - template will be provided for manual completion with your actual sign language content.
             </p>
             {showFallbackOption && (
               <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-yellow-800 text-sm">
-                  <strong>Video Analysis Issue:</strong> AI video analysis failed. You can proceed with a template based on detected signs.
+                  <strong>No AI Analysis:</strong> Template provided for manual completion with your actual sign language content.
                 </p>
               </div>
             )}
             {realtimeGestures.length > 0 && (
-              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-green-800 text-sm">
-                  <strong>Real-time Detection:</strong> {realtimeGestures.length} signs recognized during recording: {realtimeGestures.slice(-5).join(', ')}
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 text-sm">
+                  <strong>Motion Detected:</strong> {realtimeGestures.length} gesture patterns recognized: {realtimeGestures.slice(-5).join(', ')}
                 </p>
               </div>
             )}
             <div className="mt-2 flex justify-center gap-4 text-xs">
-              <span>Video analysis: Ready</span>
+              <span>Template mode: Manual completion</span>
               <span>Duration: {formatTime(recordingTime)}</span>
-              <span>AI confidence: {realtimeGestures.length > 10 ? 'High' : realtimeGestures.length > 3 ? 'Medium' : 'Basic'}</span>
+              <span>Patterns: {realtimeGestures.length > 10 ? 'Many' : realtimeGestures.length > 3 ? 'Some' : 'Basic'}</span>
             </div>
           </div>
         )}
         
         {/* Accessibility note */}
         <div className="bg-muted/50 p-3 rounded-lg text-sm">
-          <p className="font-medium mb-1">Enhanced Robust Gesture Detection Features:</p>
+          <p className="font-medium mb-1">Real-time Gesture Detection Features:</p>
           <ul className="text-muted-foreground space-y-1">
             <li>• 🎯 Baseline calibration eliminates false positives from camera noise</li>
             <li>• 📊 Dynamic thresholds adjust to your environment and lighting</li>
@@ -1319,12 +1145,13 @@ Note: This template is provided because automatic video analysis was not availab
             <li>• 🧠 Edge pixel exclusion reduces peripheral movement artifacts</li>
             <li>• 💾 Motion history smoothing prevents jittery detection</li>
             <li>• 🛡️ Sustained motion requirements reduce single-frame false triggers</li>
+            <li>• 📝 <strong>Note:</strong> No AI transcript generation - manual completion required</li>
           </ul>
           {currentGesture && gestureConfidence > 0.4 && (
             <div className="mt-2 p-2 bg-blue-100 rounded text-blue-800 text-xs">
               <strong>Currently detecting:</strong> {currentGesture} ({Math.round(gestureConfidence * 100)}% confidence)
               <br />
-              <strong>Status:</strong> {isRecording ? 'Recording clear sign movements for transcript' : 'Robust detection confirmed - try recording!'}
+              <strong>Status:</strong> {isRecording ? 'Recording clear movements - template will be provided' : 'Detection confirmed - ready to record!'}
             </div>
           )}
           {(!currentGesture || gestureConfidence <= 0.4) && !isRecording && (
@@ -1335,10 +1162,10 @@ Note: This template is provided because automatic video analysis was not availab
                 'Ready for clear hand movements and sign language gestures'
               }
               <br />
-              <strong>Tip:</strong> {
+              <strong>Note:</strong> {
                 !calibrationCompleteRef.current ?
                 'System is learning your environment to avoid false detections' :
-                'Make deliberate hand movements - the system now filters out noise automatically'
+                'Motion tracking only - you will manually complete the transcript template'
               }
             </div>
           )}

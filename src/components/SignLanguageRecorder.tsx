@@ -864,6 +864,7 @@ Technical Details:
                 </>
               )}
             </div>
+          </div>
         )}
 
         {/* Status info */}

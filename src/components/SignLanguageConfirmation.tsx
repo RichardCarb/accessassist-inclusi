@@ -7,26 +7,19 @@ import { VideoCamera, CheckCircle, X, Volume2, VolumeX, RotateCcw } from '@phosp
 import { toast } from 'sonner'
 
 interface SignLanguageConfirmationProps {
-  videoBlob: Blob
   transcript: string
   onConfirm: (finalTranscript: string) => void
   onRerecord: () => void
-  onCancel: () => void
 }
 
 export function SignLanguageConfirmation({
-  videoBlob,
   transcript,
   onConfirm,
-  onRerecord,
-  onCancel
+  onRerecord
 }: SignLanguageConfirmationProps) {
   const [editedTranscript, setEditedTranscript] = useState(transcript)
   const [isReadingAloud, setIsReadingAloud] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null)
-
-  const videoUrl = URL.createObjectURL(videoBlob)
 
   const readAloud = () => {
     if ('speechSynthesis' in window) {
@@ -81,9 +74,7 @@ export function SignLanguageConfirmation({
       window.speechSynthesis.cancel()
     }
     
-    // Clean up video URL
-    URL.revokeObjectURL(videoUrl)
-    onCancel()
+    onRerecord()
   }
 
   const handleRerecord = () => {
@@ -92,8 +83,6 @@ export function SignLanguageConfirmation({
       window.speechSynthesis.cancel()
     }
     
-    // Clean up video URL
-    URL.revokeObjectURL(videoUrl)
     onRerecord()
   }
 
@@ -111,19 +100,8 @@ export function SignLanguageConfirmation({
       
       <CardContent className="space-y-6">
         {/* Video and Status */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-1 gap-6">
           <div className="space-y-3">
-            <h3 className="font-medium">Your Recorded Video</h3>
-            <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-              <video
-                ref={videoRef}
-                src={videoUrl}
-                controls
-                playsInline
-                className="w-full h-full object-cover"
-                aria-label="Recorded UK sign language video"
-              />
-            </div>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-blue-600 border-blue-600">
                 <CheckCircle className="h-3 w-3 mr-1" />

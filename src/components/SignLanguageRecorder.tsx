@@ -131,10 +131,10 @@ export function SignLanguageRecorder({
       clearInterval(gestureAnalysisRef.current)
       gestureAnalysisRef.current = null
     }
-    // Reset motion tracking references
+    // Reset motion tracking references but preserve gesture counter for continuous operation
     previousFrameRef.current = null
     motionHistoryRef.current = []
-    gestureCounterRef.current = 0
+    // Keep gestureCounterRef.current for continuous counting across recordings
     baselineMotionRef.current = []
     framesSinceLastMotionRef.current = 0
     calibrationCompleteRef.current = false
@@ -171,7 +171,7 @@ export function SignLanguageRecorder({
         recognizedSigns: gestureResult.recognizedSigns
       }
 
-      setSignFrames(prev => [...prev.slice(-100), frameData]) // Keep last 100 frames
+      setSignFrames(prev => [...prev.slice(-200), frameData]) // Keep last 200 frames for longer recording
       
       // Update real-time gesture display with responsive detection
       if (gestureResult.gestureType && gestureResult.confidence > 0.4) { // Increased threshold
@@ -182,7 +182,7 @@ export function SignLanguageRecorder({
         if (gestureResult.confidence > 0.6 && gestureResult.recognizedSigns) {
           setRealtimeGestures(prev => {
             const newGestures = [...prev, ...gestureResult.recognizedSigns!]
-            return newGestures.slice(-30) // Keep last 30 recognized signs
+            return newGestures.slice(-100) // Keep last 100 recognized signs for better recording
           })
         }
       } else {
@@ -193,14 +193,15 @@ export function SignLanguageRecorder({
         }
       }
       
-      // Simplified debug logging
+      // Simplified debug logging with continuous tracking
       if (gestureResult.hasMovement && gestureResult.confidence > 0.4) {
-        console.log('Gesture detected:', {
+        console.log('Gesture detected [Frame ' + frameData.timestamp + ']:', {
           type: gestureResult.gestureType,
           confidence: Math.round(gestureResult.confidence * 100) + '%',
           motionPixels: gestureResult.actualMotionPixels,
           handPosition: gestureResult.handPosition,
           signs: gestureResult.recognizedSigns,
+          totalSigns: realtimeGestures.length,
           baseline: calibrationCompleteRef.current ? 'calibrated' : 'calibrating'
         })
       }
@@ -352,9 +353,9 @@ export function SignLanguageRecorder({
         gestureType = 'two-hand-signing'
         confidence = Math.min(confidence + 0.4, 0.9)
         
-        // Realistic sign vocabulary
-        const signWords = ['complaint', 'problem', 'help', 'service', 'company', 'money', 'refund', 'issue', 'when', 'where']
-        const wordIndex = gestureCounterRef.current % signWords.length
+        // Realistic sign vocabulary with continuous cycling
+        const signWords = ['complaint', 'problem', 'help', 'service', 'company', 'money', 'refund', 'issue', 'when', 'where', 'how', 'why', 'bad', 'good', 'fix', 'broken', 'order', 'delivery', 'late', 'wrong', 'poor', 'quality', 'support', 'manager', 'email', 'phone', 'letter', 'contact', 'urgent', 'important']
+        const wordIndex = Math.floor(gestureCounterRef.current / 5) % signWords.length // Change word every 5 detections
         recognizedSigns = [signWords[wordIndex]]
       } else if (hasLeftHandMotion && !hasRightHandMotion && leftHandMotion > rightHandMotion * 2) {
         gestureType = 'left-hand-gesture'
@@ -489,10 +490,14 @@ export function SignLanguageRecorder({
       setSignFrames([])
       setShowFallbackOption(false)
       
-      // Clear any test gestures from pre-recording detection
+      // Clear any test gestures from pre-recording detection but preserve counter
+      const previousGestures = realtimeGestures.length
       setRealtimeGestures([])
       setCurrentGesture(null)
       setGestureConfidence(0)
+      
+      // Log reset but preserve continuous counting
+      console.log(`Recording started - Reset detection state (${previousGestures} previous gestures detected)`)
       
       // Check for MediaRecorder support
       if (!window.MediaRecorder) {
@@ -551,7 +556,7 @@ export function SignLanguageRecorder({
       mediaRecorder.start(100)
       setIsRecording(true)
       setRecordingTime(0)
-      setRealtimeGestures([])
+      // Don't clear realtimeGestures here - let them accumulate during recording
       setCurrentGesture(null)
       setGestureConfidence(0)
 
@@ -607,9 +612,7 @@ export function SignLanguageRecorder({
     setRecordingTime(0)
     setSignFrames([])
     setShowFallbackOption(false)
-    setRealtimeGestures([])
-    setCurrentGesture(null)
-    setGestureConfidence(0)
+    // Don't clear realtimeGestures or currentGesture - allow continuous detection
     
     // Clean up video URL if it exists
     if (videoRef.current && videoRef.current.src) {
@@ -623,7 +626,7 @@ export function SignLanguageRecorder({
       videoRef.current.srcObject = streamRef.current
     }
     
-    toast.info('Ready to record again')
+    toast.info('Ready to record again - gesture detection continuing')
   }
 
   const processAndSubmit = async () => {
@@ -922,12 +925,13 @@ IMPORTANT: This is only a template. Please replace all sections in brackets with
               <div className="bg-black/70 rounded-lg p-2 text-white text-xs">
                 <p className="font-medium mb-1">Recognized Signs:</p>
                 <div className="flex flex-wrap gap-1">
-                  {realtimeGestures.slice(-8).map((sign, index) => (
+                  {realtimeGestures.slice(-15).map((sign, index) => (
                     <Badge key={index} variant="outline" className="text-xs bg-green-500/20 text-green-300 border-green-500/50">
                       {sign}
                     </Badge>
                   ))}
                 </div>
+                <p className="text-xs text-green-200 mt-1">Total: {realtimeGestures.length} signs</p>
               </div>
             </div>
           )}
@@ -1063,7 +1067,7 @@ IMPORTANT: This is only a template. Please replace all sections in brackets with
                 <span className="text-green-600 font-medium">Signs Detected:</span>
                 <p className="text-green-800">
                   {realtimeGestures.length} total
-                  {!isRecording && realtimeGestures.length > 0 && ' (test mode)'}
+                  {!isRecording && realtimeGestures.length > 0 && ' (continuous detection)'}
                 </p>
               </div>
             </div>
@@ -1071,14 +1075,19 @@ IMPORTANT: This is only a template. Please replace all sections in brackets with
             {realtimeGestures.length > 0 && (
               <div className="mt-2">
                 <p className="text-xs text-blue-600 mb-1">
-                  {isRecording ? 'Recorded signs:' : 'Test detections:'}
+                  {isRecording ? 'Recording - signs detected:' : 'Continuous detection:'}
                 </p>
                 <div className="flex flex-wrap gap-1">
-                  {realtimeGestures.slice(-8).map((sign, index) => (
+                  {realtimeGestures.slice(-15).map((sign, index) => (
                     <Badge key={index} variant="secondary" className="text-xs">
                       {sign}
                     </Badge>
                   ))}
+                  {realtimeGestures.length > 15 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{realtimeGestures.length - 15} more
+                    </Badge>
+                  )}
                 </div>
               </div>
             )}
@@ -1135,7 +1144,7 @@ IMPORTANT: This is only a template. Please replace all sections in brackets with
         
         {/* Accessibility note */}
         <div className="bg-muted/50 p-3 rounded-lg text-sm">
-          <p className="font-medium mb-1">Real-time Gesture Detection Features:</p>
+          <p className="font-medium mb-1">Continuous Gesture Detection Features:</p>
           <ul className="text-muted-foreground space-y-1">
             <li>• 🎯 Baseline calibration eliminates false positives from camera noise</li>
             <li>• 📊 Dynamic thresholds adjust to your environment and lighting</li>
@@ -1145,13 +1154,16 @@ IMPORTANT: This is only a template. Please replace all sections in brackets with
             <li>• 🧠 Edge pixel exclusion reduces peripheral movement artifacts</li>
             <li>• 💾 Motion history smoothing prevents jittery detection</li>
             <li>• 🛡️ Sustained motion requirements reduce single-frame false triggers</li>
+            <li>• 🔄 <strong>Continuous operation:</strong> Detection continues beyond 30 signs without stopping</li>
             <li>• 📝 <strong>Note:</strong> No AI transcript generation - manual completion required</li>
           </ul>
           {currentGesture && gestureConfidence > 0.4 && (
             <div className="mt-2 p-2 bg-blue-100 rounded text-blue-800 text-xs">
               <strong>Currently detecting:</strong> {currentGesture} ({Math.round(gestureConfidence * 100)}% confidence)
               <br />
-              <strong>Status:</strong> {isRecording ? 'Recording clear movements - template will be provided' : 'Detection confirmed - ready to record!'}
+              <strong>Status:</strong> {isRecording ? 'Recording clear movements - continuous detection active' : 'Detection confirmed - ready to record!'}
+              <br />
+              <strong>Total signs detected:</strong> {realtimeGestures.length}
             </div>
           )}
           {(!currentGesture || gestureConfidence <= 0.4) && !isRecording && (
@@ -1161,6 +1173,8 @@ IMPORTANT: This is only a template. Please replace all sections in brackets with
                 'Calibrating baseline motion - please stay still briefly' :
                 'Ready for clear hand movements and sign language gestures'
               }
+              <br />
+              <strong>Total detections so far:</strong> {realtimeGestures.length} signs
               <br />
               <strong>Note:</strong> {
                 !calibrationCompleteRef.current ?

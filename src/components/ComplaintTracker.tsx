@@ -24,7 +24,12 @@ export interface ComplaintData {
   impact: string
   desiredRemedy: string
   deadline?: string
-  status: 'draft' | 'submitted' | 'acknowledged' | 'due' | 'escalate' | 'resolved'
+  status: 'draft' | 'submitted' | 'acknowledged' | 'due' | 'escalate' | 'escalated' | 'resolved'
+  history: Array<{
+    timestamp: string
+    event: 'created' | 'submitted' | 'acknowledged' | 'escalated' | 'resolved'
+    notes?: string
+  }>
   createdAt: string
   draftText?: string
 }
@@ -41,6 +46,7 @@ const statusConfig = {
   acknowledged: { label: 'Acknowledged', color: 'bg-green-100 text-green-800', icon: CheckCircle },
   due: { label: 'Response Due', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
   escalate: { label: 'Needs Escalation', color: 'bg-red-100 text-red-800', icon: AlertTriangle },
+  escalated: { label: 'Escalated', color: 'bg-orange-100 text-orange-800', icon: ArrowRight },
   resolved: { label: 'Resolved', color: 'bg-green-100 text-green-800', icon: CheckCircle }
 }
 
@@ -125,15 +131,16 @@ export function ComplaintTracker({ complaints, onViewComplaint, onEscalateCompla
                     <ArrowRight className="h-3 w-3" />
                   </Button>
                   
-                  {(complaint.status === 'due' || complaint.status === 'escalate' || isOverdue) && (
+                  {(complaint.status === 'due' || complaint.status === 'escalate' || complaint.status === 'escalated' || isOverdue) && (
                     <Button
                       variant="default"
                       size="sm"
                       onClick={() => onEscalateComplaint(complaint)}
                       className="flex items-center gap-1 bg-accent hover:bg-accent/90"
+                      disabled={complaint.status === 'escalated'}
                     >
                       <AlertTriangle className="h-3 w-3" />
-                      Escalate
+                      {complaint.status === 'escalated' ? 'Escalated' : 'Escalate'}
                     </Button>
                   )}
                 </div>

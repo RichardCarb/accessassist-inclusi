@@ -7,6 +7,7 @@ import { AccessibilityControls } from '@/components/AccessibilityControls'
 import { ComplaintIntake } from '@/components/ComplaintIntake'
 import { ComplaintDrafter } from '@/components/ComplaintDrafter'
 import { ComplaintTracker, ComplaintData } from '@/components/ComplaintTracker'
+import { EscalationGuidance } from '@/components/EscalationGuidance'
 import { Plus, Shield, Clock, Users } from '@phosphor-icons/react'
 import { toast, Toaster } from 'sonner'
 
@@ -52,7 +53,16 @@ function App() {
   }, [accessibilitySettings])
 
   const handleComplaintCreated = (complaint: ComplaintData) => {
-    setCurrentComplaint(complaint)
+    // Initialize with history
+    const complaintWithHistory = {
+      ...complaint,
+      history: [{
+        timestamp: new Date().toISOString(),
+        event: 'created' as const,
+        notes: 'Complaint created through guided intake'
+      }]
+    }
+    setCurrentComplaint(complaintWithHistory)
     setCurrentView('draft')
     toast.success('Complaint created! Now generating your draft...')
   }
@@ -269,23 +279,11 @@ function App() {
         )}
 
         {currentView === 'escalate' && currentComplaint && (
-          <div className="max-w-2xl mx-auto">
-            <Card>
-              <CardHeader>
-                <CardTitle>Escalation Guidance</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p>Escalation features would include:</p>
-                <ul className="list-disc pl-6 space-y-1">
-                  <li>Template for escalation letters</li>
-                  <li>Ombudsman contact information</li>
-                  <li>Regulatory body guidance</li>
-                  <li>Timeline expectations</li>
-                </ul>
-                <Button onClick={goHome}>Return Home</Button>
-              </CardContent>
-            </Card>
-          </div>
+          <EscalationGuidance
+            complaint={currentComplaint}
+            onBack={goHome}
+            onComplaintUpdated={handleDraftUpdated}
+          />
         )}
       </main>
 

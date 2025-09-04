@@ -14,6 +14,7 @@ export function CameraTest({ onClose }: CameraTestProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [videoReady, setVideoReady] = useState(false)
 
   useEffect(() => {
     testCameraAccess()
@@ -32,31 +33,94 @@ export function CameraTest({ onClose }: CameraTestProps) {
     try {
       setIsLoading(true)
       setError(null)
+      setVideoReady(false)
       
       console.log('Testing camera access...')
       console.log('Navigator.mediaDevices:', !!navigator.mediaDevices)
       console.log('getUserMedia:', !!navigator.mediaDevices?.getUserMedia)
       console.log('Location:', location.protocol, location.hostname)
+      console.log('Is HTTPS or localhost:', location.protocol === 'https:' || location.hostname === 'localhost')
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API not supported in this browser')
       }
 
-      const testStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+      // Stop any existing stream first
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop())
+        setStream(null)
+      }
+
+      const constraints = {
+        video: { 
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user',
+          frameRate: { ideal: 15 } // Lower frame rate to reduce load
+        },
         audio: false
-      })
+      }
+
+      console.log('Requesting stream with constraints:', constraints)
+      const testStream = await navigator.mediaDevices.getUserMedia(constraints)
 
       console.log('Stream obtained:', testStream)
-      console.log('Video tracks:', testStream.getVideoTracks().length)
+      console.log('Video tracks:', testStream.getVideoTracks())
+      
+      const videoTrack = testStream.getVideoTracks()[0]
+      if (videoTrack) {
+        console.log('Video track settings:', videoTrack.getSettings())
+        console.log('Video track state:', videoTrack.readyState)
+      }
 
       if (videoRef.current) {
-        videoRef.current.srcObject = testStream
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current.play()
-            console.log('Video playing, dimensions:', videoRef.current.videoWidth, 'x', videoRef.current.videoHeight)
-          }
+        // Wait for video element to be ready
+        const video = videoRef.current
+        
+        // Set up event handlers
+        const handleLoadedMetadata = () => {
+          console.log('Video metadata loaded')
+          console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight)
+          
+          // Ensure video is playing
+          video.play().then(() => {
+            console.log('Video playing successfully')
+            setVideoReady(true)
+            setIsLoading(false)
+          }).catch(playError => {
+            console.error('Play failed:', playError)
+            setError('Video playback failed: ' + playError.message)
+            setIsLoading(false)
+          })
+        }
+
+        const handleError = (e: Event) => {
+          console.error('Video element error:', e)
+          setError('Video display error')
+          setIsLoading(false)
+        }
+
+        const handleCanPlay = () => {
+          console.log('Video can play')
+        }
+
+        // Clean up previous handlers
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata)
+        video.removeEventListener('error', handleError)
+        video.removeEventListener('canplay', handleCanPlay)
+        
+        // Add new handlers
+        video.addEventListener('loadedmetadata', handleLoadedMetadata)
+        video.addEventListener('error', handleError)
+        video.addEventListener('canplay', handleCanPlay)
+        
+        // Reset and set the stream
+        video.srcObject = null
+        video.srcObject = testStream
+        
+        // Manual trigger if metadata is already loaded
+        if (video.readyState >= 1) { // HAVE_METADATA
+          handleLoadedMetadata()
         }
       }
 
@@ -67,20 +131,21 @@ export function CameraTest({ onClose }: CameraTestProps) {
     } catch (err: any) {
       console.error('Camera test failed:', err)
       setHasPermission(false)
-      setError(err.message)
+      setIsLoading(false)
       
       let userMessage = 'Camera access failed'
       if (err.name === 'NotAllowedError') {
-        userMessage = 'Camera permission denied'
+        userMessage = 'Camera permission denied. Please allow camera access and try again.'
       } else if (err.name === 'NotFoundError') {
-        userMessage = 'No camera found'
+        userMessage = 'No camera found on this device'
       } else if (err.name === 'NotReadableError') {
-        userMessage = 'Camera busy or unavailable'
+        userMessage = 'Camera is busy or unavailable. Close other apps using the camera and try again.'
+      } else if (err.name === 'OverconstrainedError') {
+        userMessage = 'Camera doesn\'t support the requested settings'
       }
       
+      setError(err.message || userMessage)
       toast.error(userMessage)
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -94,6 +159,12 @@ export function CameraTest({ onClose }: CameraTestProps) {
     // Reset state
     setHasPermission(null)
     setError(null)
+    setVideoReady(false)
+    
+    // Clear video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
     
     // Try again
     testCameraAccess()
@@ -122,19 +193,66 @@ export function CameraTest({ onClose }: CameraTestProps) {
               <span className="font-medium">Camera access successful!</span>
             </div>
             
-            <div className="bg-black rounded-lg overflow-hidden aspect-video">
+            <div className="bg-black rounded-lg overflow-hidden aspect-video relative">
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
                 className="w-full h-full object-cover"
+                style={{ backgroundColor: '#000' }}
               />
+              
+              {!videoReady && (
+                <div className="absolute inset-0 flex items-center justify-center text-white">
+                  <div className="text-center">
+                    <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2" />
+                    <p className="text-sm">Loading video...</p>
+                  </div>
+                </div>
+              )}
             </div>
             
-            <p className="text-sm text-muted-foreground">
-              If you can see yourself in the video above, camera access is working properly.
-            </p>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>
+                {videoReady 
+                  ? "✓ Camera is working properly! You should see yourself in the video above."
+                  : "Camera connected, loading video feed..."
+                }
+              </p>
+              {videoReady && stream && (
+                <p className="text-xs">
+                  Video tracks: {stream.getVideoTracks().length} | 
+                  Status: {stream.getVideoTracks()[0]?.readyState || 'unknown'}
+                </p>
+              )}
+            </div>
+
+            {/* Debug information */}
+            <div className="bg-muted/50 p-3 rounded text-xs space-y-2">
+              <p className="font-medium">Debug Information:</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <strong>Stream:</strong> {stream ? '✓ Active' : '✗ None'}<br />
+                  <strong>Video Ready:</strong> {videoReady ? '✓ Yes' : '✗ No'}<br />
+                  <strong>Video Element:</strong> {videoRef.current ? '✓ Present' : '✗ Missing'}
+                </div>
+                <div>
+                  {videoRef.current && (
+                    <>
+                      <strong>Video Size:</strong> {videoRef.current.videoWidth || 0}x{videoRef.current.videoHeight || 0}<br />
+                      <strong>Ready State:</strong> {videoRef.current.readyState}<br />
+                      <strong>Paused:</strong> {videoRef.current.paused ? 'Yes' : 'No'}
+                    </>
+                  )}
+                </div>
+              </div>
+              {stream && stream.getVideoTracks().length > 0 && (
+                <div>
+                  <strong>Track Settings:</strong> {JSON.stringify(stream.getVideoTracks()[0]?.getSettings() || {}, null, 2)}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -164,6 +282,11 @@ export function CameraTest({ onClose }: CameraTestProps) {
         )}
 
         <div className="flex gap-2 justify-center">
+          {hasPermission === true && (
+            <Button onClick={retryAccess} variant="outline">
+              Refresh Video
+            </Button>
+          )}
           {hasPermission === false && (
             <Button onClick={retryAccess}>
               Try Again

@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Microphone, MicrophoneSlash, Plus, X, Calendar, Hash, FileText, VideoCamera, Type } from '@phosphor-icons/react'
 import { ComplaintData } from './ComplaintTracker'
-import { RealTimeSignLanguageRecognition } from './RealTimeSignLanguageRecognition'
+import { SignLanguageRecorder } from './SignLanguageRecorder'
 import { toast } from 'sonner'
 
 interface ComplaintIntakeProps {
@@ -192,7 +192,7 @@ export function ComplaintIntake({ onComplaintCreated, voiceEnabled = false }: Co
 
   if (showSignRecorder) {
     return (
-      <RealTimeSignLanguageRecognition
+      <SignLanguageRecorder
         onVideoRecorded={handleVideoRecorded}
         onClose={() => setShowSignRecorder(false)}
         maxDurationMinutes={5}

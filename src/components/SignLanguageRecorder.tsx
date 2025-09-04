@@ -60,6 +60,21 @@ export function SignLanguageRecorder({
 
   const maxDurationSeconds = maxDurationMinutes * 60
 
+  // Auto-request camera permission when component mounts
+  useEffect(() => {
+    if (hasPermission === null) {
+      console.log('Component mounted, requesting camera permission...')
+      console.log('Navigator.mediaDevices available:', !!navigator.mediaDevices)
+      console.log('getUserMedia available:', !!navigator.mediaDevices?.getUserMedia)
+      console.log('Location:', {
+        protocol: location.protocol,
+        hostname: location.hostname,
+        port: location.port
+      })
+      requestCameraPermission()
+    }
+  }, [])
+  
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -328,54 +343,92 @@ export function SignLanguageRecorder({
 
   const requestCameraPermission = async () => {
     try {
+      // Basic browser support check
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera access is not supported in this browser')
       }
-      
-      // Check if we're on HTTPS or localhost (required for camera access)
-      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-        throw new Error('Camera access requires a secure connection (HTTPS)')
-      }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          facingMode: 'user'
-        }, 
-        audio: true 
-      })
+      // Try to get permissions first without detailed constraints
+      console.log('Requesting camera permission...')
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-      streamRef.current = stream
-      setHasPermission(true)
+      let stream: MediaStream
       
-      if (videoRef.current) {
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current.play()
-          }
+      try {
+        // First try with ideal constraints
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            width: { ideal: 1280, min: 320 },
+            height: { ideal: 720, min: 240 },
+            facingMode: 'user'
+          }, 
+          audio: true 
+        })
+      } catch (constraintError) {
+        console.warn('Detailed constraints failed, trying basic video:', constraintError)
+        // Fallback to basic video request
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+          })
+        } catch (basicError) {
+          console.warn('Basic video+audio failed, trying video only:', basicError)
+          // Final fallback - video only
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true
+          })
         }
       }
       
+      console.log('Camera stream obtained:', stream.getVideoTracks().length, 'video tracks')
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        
+        // Set up video element
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            console.log('Video metadata loaded, playing...')
+            videoRef.current.play().catch(playError => {
+              console.warn('Video play failed:', playError)
+            })
+          }
+        }
+        
+        // Handle video errors
+        videoRef.current.onerror = (e) => {
+          console.error('Video element error:', e)
+        }
+      }
+      
+      streamRef.current = stream
+      setHasPermission(true)
+      
       toast.success('Camera access granted! Gesture detection will start shortly.')
+      
     } catch (error: any) {
       console.error('Error accessing camera:', error)
       setHasPermission(false)
       
+      let errorMessage = 'Failed to access camera.'
+      
       if (error.name === 'NotAllowedError') {
-        toast.error('Camera permission denied. Please allow camera access and try again.')
+        errorMessage = 'Camera permission denied. Please click the camera icon in your browser address bar to allow access.'
       } else if (error.name === 'NotFoundError') {
-        toast.error('No camera found. Please connect a camera and try again.')
+        errorMessage = 'No camera found. Please connect a camera and refresh the page.'
       } else if (error.name === 'NotReadableError') {
-        toast.error('Camera is being used by another application.')
+        errorMessage = 'Camera is being used by another application. Please close other apps using your camera.'
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = 'Camera constraints not supported. Please try with a different camera.'
+      } else if (error.name === 'SecurityError') {
+        errorMessage = 'Camera access blocked by security settings. Please check your browser permissions.'
+      } else if (error.name === 'AbortError') {
+        errorMessage = 'Camera access was interrupted. Please try again.'
       } else if (error.message.includes('secure connection')) {
-        toast.error('Camera access requires HTTPS. Please use a secure connection.')
-      } else {
-        toast.error('Failed to access camera. Please check your camera settings.')
+        errorMessage = 'Camera access requires HTTPS or localhost.'
       }
+      
+      toast.error(errorMessage)
     }
   }
 
@@ -624,38 +677,47 @@ Technical Details:
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <h3 className="font-semibold mb-4">Camera Access Required</h3>
-            <p className="text-muted-foreground mb-6">
-              To record your complaint in UK Sign Language, we need access to your camera and microphone.
-            </p>
-            
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <p className="text-sm font-medium text-blue-800 mb-2">If you're having trouble:</p>
-              <ul className="text-sm text-blue-700 text-left space-y-1">
-                <li>• Check your browser settings allow camera access</li>
-                <li>• Try refreshing the page after changing permissions</li>
-                <li>• Make sure no other apps are using your camera</li>
-              </ul>
+            <div className="mb-6">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <VideoCamera className="h-8 w-8 text-red-600" />
+              </div>
+              <h3 className="font-semibold mb-2">Camera Access Required</h3>
+              <p className="text-muted-foreground">
+                To record your complaint in UK Sign Language, we need access to your camera.
+              </p>
             </div>
             
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-              <ul className="text-sm text-yellow-800 text-left space-y-1">
-                <li>• This works best on Chrome, Firefox, or Safari</li>
-                <li>• Ensure you're on a secure connection (HTTPS)</li>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 text-left">
+              <p className="text-sm font-medium text-blue-800 mb-2">Step-by-step guide:</p>
+              <ol className="text-sm text-blue-700 space-y-2">
+                <li>1. Click the camera icon in your browser's address bar</li>
+                <li>2. Select "Allow" for camera access</li>
+                <li>3. If prompted, choose "Allow" for microphone too</li>
+                <li>4. Click "Try Again" below</li>
+              </ol>
+            </div>
+            
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left">
+              <p className="text-sm font-medium text-amber-800 mb-2">Still having trouble?</p>
+              <ul className="text-sm text-amber-700 space-y-1">
+                <li>• Refresh the page and try again</li>
+                <li>• Check that no other apps are using your camera</li>
+                <li>• Try using Chrome, Firefox, or Safari</li>
+                <li>• Make sure you're on a secure connection</li>
               </ul>
             </div>
             
             <div className="flex gap-3 justify-center">
-              <Button onClick={requestCameraPermission}>
-                Request Camera Access
+              <Button onClick={requestCameraPermission} className="px-6">
+                Try Again
               </Button>
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
             </div>
             
-            <p className="text-xs text-muted-foreground mt-4">
-              Having trouble? You can continue with text input or come back to try sign language recording later.
+            <p className="text-xs text-muted-foreground mt-6">
+              Having persistent issues? You can continue with text input and return to try sign language recording later.
             </p>
           </div>
         </CardContent>
@@ -667,8 +729,19 @@ Technical Details:
     return (
       <Card className="w-full max-w-2xl mx-auto">
         <CardContent className="p-8 text-center">
-          <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-          <p>Checking camera access...</p>
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+          </div>
+          <h3 className="font-semibold mb-2">Setting up camera...</h3>
+          <p className="text-muted-foreground mb-4">
+            Requesting camera access for sign language recording
+          </p>
+          
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-left">
+            <p className="text-sm text-blue-700">
+              <strong>If your browser asks for permission:</strong> Please click "Allow" to enable camera access for sign language recording.
+            </p>
+          </div>
         </CardContent>
       </Card>
     )

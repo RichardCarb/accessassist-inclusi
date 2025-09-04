@@ -8,6 +8,7 @@ import { ComplaintIntake } from '@/components/ComplaintIntake'
 import { ComplaintDrafter } from '@/components/ComplaintDrafter'
 import { ComplaintTracker, ComplaintData } from '@/components/ComplaintTracker'
 import { EscalationGuidance } from '@/components/EscalationGuidance'
+import { CameraTest } from '@/components/CameraTest'
 import { Plus, Shield, Clock, Users } from '@phosphor-icons/react'
 import { toast, Toaster } from 'sonner'
 
@@ -19,7 +20,7 @@ interface AccessibilitySettings {
   voiceEnabled: boolean
 }
 
-type AppView = 'home' | 'intake' | 'draft' | 'escalate'
+type AppView = 'home' | 'intake' | 'draft' | 'escalate' | 'camera-test'
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('home')
@@ -196,6 +197,13 @@ function App() {
                   >
                     Settings
                   </Button>
+                  <Button 
+                    variant="secondary" 
+                    className="w-full mt-2 text-xs"
+                    onClick={() => setCurrentView('camera-test')}
+                  >
+                    Test Camera
+                  </Button>
                 </div>
               </Card>
             </div>
@@ -211,6 +219,22 @@ function App() {
             )}
 
             <div className="max-w-3xl mx-auto space-y-6">
+              <div className="bg-muted/50 p-4 rounded-lg text-sm">
+                <h4 className="font-medium mb-2">Debug Information</h4>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <span className="font-medium">Location:</span><br />
+                    Protocol: {typeof window !== 'undefined' ? window.location.protocol : 'unknown'}<br />
+                    Host: {typeof window !== 'undefined' ? window.location.hostname : 'unknown'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Media API:</span><br />
+                    Available: {typeof navigator !== 'undefined' && navigator.mediaDevices ? '✓' : '✗'}<br />
+                    getUserMedia: {typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia ? '✓' : '✗'}
+                  </div>
+                </div>
+              </div>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="text-center">How AccessAssist Works</CardTitle>
@@ -284,6 +308,10 @@ function App() {
             onBack={goHome}
             onComplaintUpdated={handleDraftUpdated}
           />
+        )}
+
+        {currentView === 'camera-test' && (
+          <CameraTest onClose={goHome} />
         )}
       </main>
 

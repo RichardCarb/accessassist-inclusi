@@ -47,6 +47,7 @@ export function SignLanguageRecorder({
   const [showFallbackOption, setShowFallbackOption] = useState(false)
   const [handBoxes, setHandBoxes] = useState<{ left?: any, right?: any }>({})
   const [showSignExamples, setShowSignExamples] = useState(false)
+  const [videoReady, setVideoReady] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)

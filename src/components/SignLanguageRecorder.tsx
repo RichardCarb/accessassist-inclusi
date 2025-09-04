@@ -97,6 +97,10 @@ export function SignLanguageRecorder({
     if (hasPermission === true && videoRef.current) {
       const checkVideoReady = () => {
         if (videoRef.current && videoRef.current.videoWidth > 0) {
+          if (!videoReady) {
+            console.log('Video dimensions available, setting ready')
+            setVideoReady(true)
+          }
           initializeBasicDetection()
         } else {
           setTimeout(checkVideoReady, 200) // Reduced delay
@@ -104,7 +108,25 @@ export function SignLanguageRecorder({
       }
       setTimeout(checkVideoReady, 500) // Reduced initial delay
     }
-  }, [hasPermission])
+  }, [hasPermission, videoReady])
+
+  // Additional periodic check for video ready state
+  useEffect(() => {
+    if (hasPermission === true && !videoReady) {
+      const periodicCheck = setInterval(() => {
+        if (videoRef.current && videoRef.current.videoWidth > 0 && videoRef.current.videoHeight > 0) {
+          console.log('Periodic check: Video dimensions available, setting ready')
+          setVideoReady(true)
+          clearInterval(periodicCheck)
+        }
+      }, 500)
+
+      // Clear interval after 10 seconds
+      setTimeout(() => clearInterval(periodicCheck), 10000)
+
+      return () => clearInterval(periodicCheck)
+    }
+  }, [hasPermission, videoReady])
 
   const initializeBasicDetection = () => {
     // Initialize enhanced real-time gesture recognition
@@ -519,21 +541,90 @@ export function SignLanguageRecorder({
       console.log('Camera stream obtained:', stream.getVideoTracks().length, 'video tracks')
       
       if (videoRef.current) {
-        videoRef.current.srcObject = stream
+        const video = videoRef.current
         
-        // Set up video element
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            console.log('Video metadata loaded, playing...')
-            videoRef.current.play().catch(playError => {
-              console.warn('Video play failed:', playError)
+        // Clear any existing source
+        video.srcObject = null
+        
+        // Set up comprehensive event handlers
+        const handleCanPlay = () => {
+          console.log('Video can play')
+          setVideoReady(true)
+        }
+        
+        const handleLoadedData = () => {
+          console.log('Video data loaded')
+          setVideoReady(true)
+        }
+        
+        const handleLoadedMetadata = () => {
+          console.log('Video metadata loaded, dimensions:', video.videoWidth, 'x', video.videoHeight)
+          
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setVideoReady(true)
+            
+            // Attempt to play
+            video.play().then(() => {
+              console.log('Video playing successfully')
+              setVideoReady(true)
+            }).catch(playError => {
+              console.warn('Video play failed, but video is loaded:', playError)
+              // Even if autoplay fails, the video is ready for user interaction
+              setVideoReady(true)
             })
           }
         }
         
-        // Handle video errors
-        videoRef.current.onerror = (e) => {
+        const handleError = (e: Event) => {
           console.error('Video element error:', e)
+          setVideoReady(false)
+        }
+        
+        const handleTimeUpdate = () => {
+          // Video is definitely playing if time is updating
+          if (!videoReady) {
+            console.log('Video time updating, marking as ready')
+            setVideoReady(true)
+          }
+        }
+        
+        // Clean up previous event listeners
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata)
+        video.removeEventListener('loadeddata', handleLoadedData)
+        video.removeEventListener('canplay', handleCanPlay)
+        video.removeEventListener('error', handleError)
+        video.removeEventListener('timeupdate', handleTimeUpdate)
+        
+        // Add event listeners
+        video.addEventListener('loadedmetadata', handleLoadedMetadata)
+        video.addEventListener('loadeddata', handleLoadedData)
+        video.addEventListener('canplay', handleCanPlay)
+        video.addEventListener('error', handleError)
+        video.addEventListener('timeupdate', handleTimeUpdate)
+        
+        // Set the stream
+        video.srcObject = stream
+        
+        // Force load and set video ready after a timeout as fallback
+        setTimeout(() => {
+          if (!videoReady && video.videoWidth > 0) {
+            console.log('Timeout fallback: setting video as ready')
+            setVideoReady(true)
+          }
+        }, 2000)
+        
+        // Additional aggressive fallback for problematic browsers
+        setTimeout(() => {
+          if (!videoReady && video.srcObject && video.readyState >= 1) {
+            console.log('Aggressive fallback: forcing video ready state')
+            setVideoReady(true)
+          }
+        }, 4000)
+        
+        // Try immediate check for already loaded video
+        if (video.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+          console.log('Video already has data, setting ready immediately')
+          setVideoReady(true)
         }
       }
       
@@ -687,15 +778,42 @@ export function SignLanguageRecorder({
     setCurrentState('camera')
     setShowFallbackOption(false)
     setCurrentGesture(null)
+    setVideoReady(false) // Reset video ready state
     
     if (videoRef.current && videoRef.current.src) {
       URL.revokeObjectURL(videoRef.current.src)
     }
     
     // Restart camera stream
-    if (streamRef.current) {
-      videoRef.current!.controls = false
-      videoRef.current!.srcObject = streamRef.current
+    if (streamRef.current && videoRef.current) {
+      videoRef.current.controls = false
+      videoRef.current.srcObject = streamRef.current
+      
+      // Set up event handlers again for the live stream
+      const video = videoRef.current
+      
+      const handleCanPlay = () => {
+        console.log('Video can play (retake)')
+        setVideoReady(true)
+      }
+      
+      const handleLoadedMetadata = () => {
+        console.log('Video metadata loaded (retake)')
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setVideoReady(true)
+        }
+      }
+      
+      video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true })
+      video.addEventListener('canplay', handleCanPlay, { once: true })
+      
+      // Fallback timeout
+      setTimeout(() => {
+        if (!videoReady && video.videoWidth > 0) {
+          console.log('Retake timeout fallback: setting video as ready')
+          setVideoReady(true)
+        }
+      }, 1000)
     }
   }
 
@@ -907,8 +1025,47 @@ Technical Details:
             autoPlay
             playsInline
             muted={!recordedBlob}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover cursor-pointer"
+            onClick={() => {
+              if (videoRef.current && !videoReady) {
+                videoRef.current.play().then(() => {
+                  setVideoReady(true)
+                }).catch(console.error)
+              }
+            }}
           />
+          
+          {/* Video loading overlay when not ready */}
+          {!videoReady && (
+            <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+              <div className="text-center text-white">
+                <div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-3" />
+                <p className="text-sm mb-2">Initializing camera feed...</p>
+                <p className="text-xs opacity-75 mb-3">
+                  {videoRef.current?.videoWidth ? 
+                    `Camera connected (${videoRef.current.videoWidth}×${videoRef.current.videoHeight})` : 
+                    'Connecting to camera...'
+                  }
+                </p>
+                {videoRef.current?.videoWidth > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-white border-white hover:bg-white hover:text-black"
+                    onClick={() => {
+                      if (videoRef.current) {
+                        videoRef.current.play().then(() => {
+                          setVideoReady(true)
+                        }).catch(console.error)
+                      }
+                    }}
+                  >
+                    Click to Activate Video
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
           
           {/* Hand tracking overlays */}
           {signDetectionActive && handBoxes.left && (
@@ -1008,6 +1165,19 @@ Technical Details:
                 <Eye className="h-5 w-5 mr-2" />
                 {showSignExamples ? 'Hide' : 'Show'} Sign Examples
               </Button>
+              {!videoReady && (
+                <Button 
+                  variant="secondary"
+                  onClick={() => {
+                    setVideoReady(false)
+                    requestCameraPermission()
+                  }}
+                  size="lg"
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-800"
+                >
+                  🔄 Refresh Video
+                </Button>
+              )}
             </>
           ) : isRecording ? (
             <>
@@ -1213,6 +1383,34 @@ Technical Details:
               <span>Template option available if AI processing encounters issues</span>
             </div>
           )}
+        </div>
+
+        {/* Video Debug Information */}
+        <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-xs space-y-2">
+          <h4 className="font-medium text-blue-800">Video Status Debug</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <span className="font-medium">Video Ready:</span> {videoReady ? '✅ Yes' : '❌ No'}<br />
+              <span className="font-medium">Stream Active:</span> {streamRef.current ? '✅ Yes' : '❌ No'}<br />
+              <span className="font-medium">Video Element:</span> {videoRef.current ? '✅ Present' : '❌ Missing'}
+            </div>
+            <div>
+              {videoRef.current && (
+                <>
+                  <span className="font-medium">Dimensions:</span> {videoRef.current.videoWidth || 0}×{videoRef.current.videoHeight || 0}<br />
+                  <span className="font-medium">Ready State:</span> {videoRef.current.readyState}/4<br />
+                  <span className="font-medium">Paused:</span> {videoRef.current.paused ? 'Yes' : 'No'}
+                </>
+              )}
+            </div>
+          </div>
+          <div className="text-xs text-blue-700 mt-2">
+            {!videoReady ? (
+              <p>🔧 If video stays stuck loading, try the "Refresh Video" button above</p>
+            ) : (
+              <p>✅ Video feed is working properly</p>
+            )}
+          </div>
         </div>
 
         <div className="bg-muted/50 p-3 rounded-lg text-xs text-muted-foreground">

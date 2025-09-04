@@ -17,7 +17,10 @@ export function CameraTest({ onClose }: CameraTestProps) {
 
   useEffect(() => {
     testCameraAccess()
-    
+  }, []) // Only run once on mount
+
+  // Separate effect for cleanup when component unmounts
+  useEffect(() => {
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop())
@@ -59,7 +62,7 @@ export function CameraTest({ onClose }: CameraTestProps) {
 
       setStream(testStream)
       setHasPermission(true)
-      toast.success('Camera access granted!')
+      console.log('Camera test successful')
       
     } catch (err: any) {
       console.error('Camera test failed:', err)
@@ -82,12 +85,17 @@ export function CameraTest({ onClose }: CameraTestProps) {
   }
 
   const retryAccess = () => {
-    setHasPermission(null)
-    setError(null)
+    // Clean up existing stream first
     if (stream) {
       stream.getTracks().forEach(track => track.stop())
       setStream(null)
     }
+    
+    // Reset state
+    setHasPermission(null)
+    setError(null)
+    
+    // Try again
     testCameraAccess()
   }
 

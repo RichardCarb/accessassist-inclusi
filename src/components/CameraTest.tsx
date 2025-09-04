@@ -18,16 +18,14 @@ export function CameraTest({ onClose }: CameraTestProps) {
 
   useEffect(() => {
     testCameraAccess()
-  }, []) // Only run once on mount
-
-  // Separate effect for cleanup when component unmounts
-  useEffect(() => {
+    
+    // Cleanup function
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop())
       }
     }
-  }, [stream])
+  }, [])
 
   const testCameraAccess = async () => {
     try {
@@ -53,10 +51,10 @@ export function CameraTest({ onClose }: CameraTestProps) {
 
       const constraints = {
         video: { 
-          width: { ideal: 640 },
-          height: { ideal: 480 },
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
           facingMode: 'user',
-          frameRate: { ideal: 15 } // Lower frame rate to reduce load
+          frameRate: { ideal: 15, max: 30 }
         },
         audio: false
       }
@@ -82,16 +80,17 @@ export function CameraTest({ onClose }: CameraTestProps) {
           console.log('Video metadata loaded')
           console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight)
           
-          // Ensure video is playing
-          video.play().then(() => {
-            console.log('Video playing successfully')
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
             setVideoReady(true)
             setIsLoading(false)
-          }).catch(playError => {
-            console.error('Play failed:', playError)
-            setError('Video playback failed: ' + playError.message)
-            setIsLoading(false)
-          })
+            
+            // Try to play the video  
+            video.play().then(() => {
+              console.log('Video playing successfully')
+            }).catch(playError => {
+              console.warn('Video play failed, but video is ready:', playError)
+            })
+          }
         }
 
         const handleError = (e: Event) => {

@@ -163,15 +163,19 @@ export function SignLanguageRecorder({
     try {
       const gestureResult = detectBasicMotion()
       
-      if (gestureResult.hasMovement && gestureResult.confidence > 0.4) {
+      // Detect both movement AND static hand positions
+      const hasStaticHands = gestureResult.handPosition.left || gestureResult.handPosition.right
+      const shouldDetect = gestureResult.hasMovement || hasStaticHands
+      
+      if (shouldDetect && gestureResult.confidence > 0.3) {
         setGestureConfidence(gestureResult.confidence)
-        setCurrentGesture(gestureResult.gestureType || 'motion')
+        setCurrentGesture(gestureResult.gestureType || (hasStaticHands ? 'static-position' : 'motion'))
         
         const newFrame: GestureFrame = {
           timestamp: Date.now(),
-          hasMovement: gestureResult.hasMovement,
+          hasMovement: gestureResult.hasMovement || hasStaticHands,
           confidence: gestureResult.confidence,
-          gestureType: gestureResult.gestureType,
+          gestureType: gestureResult.gestureType || (hasStaticHands ? 'static-hand-position' : 'motion'),
           handPosition: gestureResult.handPosition,
           recognizedSigns: gestureResult.recognizedSigns,
           handBounds: gestureResult.handBounds,
@@ -179,9 +183,11 @@ export function SignLanguageRecorder({
         
         setRealtimeGestures(prev => [...prev.slice(-29), newFrame]);
         setHandBoxes(gestureResult.handBounds || {});
+        framesSinceLastMotionRef.current = 0 // Reset counter when hands detected
       } else {
         framesSinceLastMotionRef.current++
-        if (framesSinceLastMotionRef.current > 6) {  // Reduced from 10
+        // Only clear detection after longer period for static positions
+        if (framesSinceLastMotionRef.current > 15) {
           setCurrentGesture(null)
           setGestureConfidence(0)
           setHandBoxes({})
@@ -192,7 +198,7 @@ export function SignLanguageRecorder({
     }
   }
 
-  // Record technical details about the gesture detection
+  // Enhanced gesture detection with static position recognition
   const detectBasicMotion = () => {
     if (!videoRef.current || !videoRef.current.videoWidth) {
       return {
@@ -208,7 +214,7 @@ export function SignLanguageRecorder({
       }
     }
 
-    // Robust gesture recognition with improved accuracy
+    // Enhanced detection with both motion and static hand recognition
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')!
     canvas.width = 320
@@ -221,49 +227,94 @@ export function SignLanguageRecorder({
     const width = canvas.width
     const height = canvas.height
     
-    // Frame differencing with noise reduction
+    // Motion analysis (frame differencing)
     let totalMotion = 0
     let leftHandMotion = 0
     let rightHandMotion = 0
     let centerMotion = 0
     let edgeMotion = 0
     
-    // Track motion regions for hand bounding boxes
-    const leftMotionPixels: {x: number, y: number}[] = []
-    const rightMotionPixels: {x: number, y: number}[] = []
+    // Static hand detection (edge and contrast analysis)
+    let leftStaticActivity = 0
+    let rightStaticActivity = 0
     
+    // Track regions for hand bounding boxes
+    const leftActivityPixels: {x: number, y: number}[] = []
+    const rightActivityPixels: {x: number, y: number}[] = []
+    
+    // Motion detection
     if (previousFrameRef.current) {
       const prevPixels = previousFrameRef.current.data
       
-      for (let i = 0; i < pixels.length; i += 16) { // Sample every 4th pixel for performance
+      for (let i = 0; i < pixels.length; i += 16) { // Sample every 4th pixel
         const currentLuma = (pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114)
         const prevLuma = (prevPixels[i] * 0.299 + prevPixels[i + 1] * 0.587 + prevPixels[i + 2] * 0.114)
         
         const lumaDiff = Math.abs(currentLuma - prevLuma)
         
-        // Reduced threshold for better sensitivity to hand movements
         if (lumaDiff > 18) {
           totalMotion++
           
-          // Region detection for hand tracking
           const pixelIndex = Math.floor(i / 4)
           const x = pixelIndex % width
           const y = Math.floor(pixelIndex / width)
           
-          // More precise hand regions - better split for natural signing space
           if (x < width * 0.35) {
             leftHandMotion++
-            leftMotionPixels.push({x, y})
+            leftActivityPixels.push({x, y})
           } else if (x > width * 0.65) {
             rightHandMotion++
-            rightMotionPixels.push({x, y})
+            rightActivityPixels.push({x, y})
           } else {
             centerMotion++
           }
           
-          // Edge detection for better gesture isolation
           if (x < 40 || x > width - 40 || y < 40 || y > height - 40) {
             edgeMotion++
+          }
+        }
+      }
+    }
+    
+    // Static hand detection using edge analysis and contrast
+    for (let y = 20; y < height - 20; y += 8) {
+      for (let x = 20; x < width - 20; x += 8) {
+        const i = (y * width + x) * 4
+        
+        // Calculate local contrast and edge strength
+        const centerLuma = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114
+        
+        // Sample surrounding pixels for edge detection
+        const surroundingIndices = [
+          ((y-8) * width + x) * 4,     // up
+          ((y+8) * width + x) * 4,     // down  
+          (y * width + (x-8)) * 4,     // left
+          (y * width + (x+8)) * 4      // right
+        ]
+        
+        let edgeStrength = 0
+        let validNeighbors = 0
+        
+        for (const idx of surroundingIndices) {
+          if (idx >= 0 && idx < pixels.length - 3) {
+            const neighborLuma = pixels[idx] * 0.299 + pixels[idx + 1] * 0.587 + pixels[idx + 2] * 0.114
+            edgeStrength += Math.abs(centerLuma - neighborLuma)
+            validNeighbors++
+          }
+        }
+        
+        const avgEdgeStrength = validNeighbors > 0 ? edgeStrength / validNeighbors : 0
+        
+        // Detect hand-like regions (moderate contrast, not too bright/dark)
+        const isHandLike = avgEdgeStrength > 25 && centerLuma > 40 && centerLuma < 200
+        
+        if (isHandLike) {
+          if (x < width * 0.4) {
+            leftStaticActivity++
+            leftActivityPixels.push({x, y})
+          } else if (x > width * 0.6) {
+            rightStaticActivity++
+            rightActivityPixels.push({x, y})
           }
         }
       }
@@ -273,14 +324,14 @@ export function SignLanguageRecorder({
     const samplePixels = pixels.length / 16
     const motionRatio = totalMotion / samplePixels
     
-    // Create hand bounding boxes with lower threshold
+    // Create hand bounding boxes from both motion and static activity
     const handBounds: any = {}
     
-    if (leftMotionPixels.length > 5) {
-      const minX = Math.min(...leftMotionPixels.map(p => p.x))
-      const maxX = Math.max(...leftMotionPixels.map(p => p.x))
-      const minY = Math.min(...leftMotionPixels.map(p => p.y))
-      const maxY = Math.max(...leftMotionPixels.map(p => p.y))
+    if (leftActivityPixels.length > 8) {
+      const minX = Math.min(...leftActivityPixels.map(p => p.x))
+      const maxX = Math.max(...leftActivityPixels.map(p => p.x))
+      const minY = Math.min(...leftActivityPixels.map(p => p.y))
+      const maxY = Math.max(...leftActivityPixels.map(p => p.y))
       
       handBounds.left = {
         x: (minX / width) * 100,
@@ -290,11 +341,11 @@ export function SignLanguageRecorder({
       }
     }
     
-    if (rightMotionPixels.length > 5) {
-      const minX = Math.min(...rightMotionPixels.map(p => p.x))
-      const maxX = Math.max(...rightMotionPixels.map(p => p.x))
-      const minY = Math.min(...rightMotionPixels.map(p => p.y))
-      const maxY = Math.max(...rightMotionPixels.map(p => p.y))
+    if (rightActivityPixels.length > 8) {
+      const minX = Math.min(...rightActivityPixels.map(p => p.x))
+      const maxX = Math.max(...rightActivityPixels.map(p => p.x))
+      const minY = Math.min(...rightActivityPixels.map(p => p.y))
+      const maxY = Math.max(...rightActivityPixels.map(p => p.y))
       
       handBounds.right = {
         x: (minX / width) * 100,
@@ -304,41 +355,42 @@ export function SignLanguageRecorder({
       }
     }
     
-    // Baseline calibration for environmental adaptation - faster calibration
-    if (!calibrationCompleteRef.current && baselineMotionRef.current.length < 10) {
+    // Baseline calibration
+    if (!calibrationCompleteRef.current && baselineMotionRef.current.length < 8) {
       baselineMotionRef.current.push(motionRatio)
-      if (baselineMotionRef.current.length === 10) {
+      if (baselineMotionRef.current.length === 8) {
         calibrationCompleteRef.current = true
-        console.log('Gesture detection calibrated quickly - baseline motion:', 
-          baselineMotionRef.current.reduce((a, b) => a + b) / 10)
-        toast.success('Calibration complete - ready for sign recognition!')
+        console.log('Enhanced gesture detection calibrated - baseline motion:', 
+          baselineMotionRef.current.reduce((a, b) => a + b) / 8)
+        toast.success('Hand tracking calibrated - static and motion detection active!')
       }
     }
     
-    // Calculate dynamic thresholds with better sensitivity
+    // Dynamic thresholds
     const averageBaseline = calibrationCompleteRef.current ? 
       baselineMotionRef.current.reduce((a, b) => a + b) / baselineMotionRef.current.length : 0.008
     
-    // More sensitive thresholds for varied gestures
-    const motionThreshold = Math.max(averageBaseline * 2.5, 0.01)
-    const significantMotionThreshold = Math.max(averageBaseline * 4, 0.02)
+    const motionThreshold = Math.max(averageBaseline * 2, 0.008)
+    const significantMotionThreshold = Math.max(averageBaseline * 3, 0.015)
+    
+    // Enhanced hand detection - combines motion and static detection
+    const hasMotion = motionRatio > motionThreshold
+    const hasLeftHandActivity = leftHandMotion > samplePixels * 0.005 || leftStaticActivity > 15
+    const hasRightHandActivity = rightHandMotion > samplePixels * 0.005 || rightStaticActivity > 15
+    const hasBothHands = hasLeftHandActivity && hasRightHandActivity
+    
+    // Static position detection
+    const hasStaticLeftHand = leftStaticActivity > 20 && leftHandMotion < samplePixels * 0.002
+    const hasStaticRightHand = rightStaticActivity > 20 && rightHandMotion < samplePixels * 0.002
+    const hasStaticHands = hasStaticLeftHand || hasStaticRightHand
     
     const hasSignificantMotion = motionRatio > significantMotionThreshold
-    const hasLeftHandMotion = leftHandMotion > samplePixels * 0.008  // More sensitive
-    const hasRightHandMotion = rightHandMotion > samplePixels * 0.008  // More sensitive
-    const hasBothHands = hasLeftHandMotion && hasRightHandMotion
+    const hasWaving = hasSignificantMotion && edgeMotion > totalMotion * 0.6 && edgeMotion > 15
     
-    // More restrictive waving detection - requires side-to-side motion at edges
-    const hasWaving = motionRatio > significantMotionThreshold && 
-                      edgeMotion > totalMotion * 0.6 && 
-                      (hasLeftHandMotion || hasRightHandMotion) &&
-                      edgeMotion > 15 // Requires substantial edge motion
+    // Movement includes both motion and static hand positions
+    const hasMovement = hasMotion || hasLeftHandActivity || hasRightHandActivity
     
-    framesSinceLastMotionRef.current = hasSignificantMotion ? 0 : framesSinceLastMotionRef.current + 1
-    
-    const hasMovement = hasSignificantMotion && framesSinceLastMotionRef.current < 2  // More responsive
-    
-    // Enhanced gesture classification with balanced detection
+    // Enhanced gesture classification
     let gestureType: string | undefined
     let recognizedSigns = null
     let confidence = 0
@@ -346,75 +398,69 @@ export function SignLanguageRecorder({
     if (hasMovement) {
       gestureCounterRef.current++
       
-      // Prioritize two-handed gestures first (most BSL signs use both hands)
-      if (hasBothHands && motionRatio > significantMotionThreshold) {
+      // Static hand positions (when hands are visible but not moving much)
+      if (hasStaticHands && !hasSignificantMotion) {
+        if (hasStaticLeftHand && hasStaticRightHand) {
+          gestureType = 'static-two-hands'
+          confidence = 0.8
+          const staticSigns = ['ready', 'listen', 'wait', 'think', 'look']
+          recognizedSigns = [staticSigns[gestureCounterRef.current % staticSigns.length]]
+        } else if (hasStaticLeftHand) {
+          gestureType = 'static-left-hand'
+          confidence = 0.75
+          const leftStaticSigns = ['point', 'stop', 'one', 'index']
+          recognizedSigns = [leftStaticSigns[gestureCounterRef.current % leftStaticSigns.length]]
+        } else if (hasStaticRightHand) {
+          gestureType = 'static-right-hand'
+          confidence = 0.75
+          const rightStaticSigns = ['point', 'stop', 'one', 'index']
+          recognizedSigns = [rightStaticSigns[gestureCounterRef.current % rightStaticSigns.length]]
+        }
+      }
+      // Active motion gestures
+      else if (hasBothHands && hasSignificantMotion) {
         gestureType = 'two-hands-active'
         confidence = 0.85
-        // Rotate through realistic BSL vocabulary
         const wordIndex = gestureCounterRef.current % 10
         const signWords = ['hello', 'please', 'thank you', 'help', 'problem', 'important', 'need', 'complaint', 'sorry', 'money']
         recognizedSigns = [signWords[wordIndex]]
       } 
-      // Left hand dominant motion
-      else if (hasLeftHandMotion && !hasRightHandMotion && leftHandMotion > samplePixels * 0.012) {
-        gestureType = 'left-hand-gesture'
+      // Single hand motion
+      else if (hasLeftHandActivity && !hasRightHandActivity) {
+        gestureType = hasMotion ? 'left-hand-gesture' : 'left-hand-static'
         confidence = 0.7
-        if (motionRatio > significantMotionThreshold * 0.7) {
-          const leftSigns = ['you', 'me', 'yes', 'no', 'what']
-          recognizedSigns = [leftSigns[gestureCounterRef.current % leftSigns.length]]
-        }
+        const leftSigns = ['you', 'me', 'yes', 'no', 'what', 'where']
+        recognizedSigns = [leftSigns[gestureCounterRef.current % leftSigns.length]]
       }
-      // Right hand dominant motion  
-      else if (hasRightHandMotion && !hasLeftHandMotion && rightHandMotion > samplePixels * 0.012) {
-        gestureType = 'right-hand-gesture'
+      else if (hasRightHandActivity && !hasLeftHandActivity) {
+        gestureType = hasMotion ? 'right-hand-gesture' : 'right-hand-static'
         confidence = 0.7
-        if (motionRatio > significantMotionThreshold * 0.7) {
-          const rightSigns = ['good', 'bad', 'stop', 'go', 'finish']
-          recognizedSigns = [rightSigns[gestureCounterRef.current % rightSigns.length]]
-        }
+        const rightSigns = ['good', 'bad', 'stop', 'go', 'finish', 'ok']
+        recognizedSigns = [rightSigns[gestureCounterRef.current % rightSigns.length]]
       }
-      // Both hands with different motion patterns
-      else if (hasLeftHandMotion && hasRightHandMotion) {
-        // Check if this might be natural signing (not just waving)
-        const handMotionRatio = (leftHandMotion + rightHandMotion) / samplePixels
-        if (handMotionRatio > 0.02 && edgeMotion < totalMotion * 0.7) {
-          gestureType = 'sign-language-gesture'
-          confidence = 0.75
-          const complexSigns = ['understand', 'don\'t know', 'explain', 'question', 'answer', 'think']
-          recognizedSigns = [complexSigns[gestureCounterRef.current % complexSigns.length]]
-        } else {
-          gestureType = 'two-hand-motion'
-          confidence = 0.6
-        }
-      }
-      // Waving pattern (edge motion dominant)
-      else if (hasWaving && edgeMotion > totalMotion * 0.4) {
+      // Waving detection
+      else if (hasWaving) {
         gestureType = 'waving'
-        confidence = 0.5
+        confidence = 0.6
         recognizedSigns = ['hello', 'goodbye']
       }
-      // Static position changes (pointing, holding)
-      else if (motionRatio > motionThreshold * 2 && motionRatio < significantMotionThreshold) {
-        gestureType = 'position-change'
-        confidence = 0.4
-      }
-      // General movement
-      else if (motionRatio > motionThreshold) {
-        gestureType = 'hand-movement'
-        confidence = 0.3
+      // General activity
+      else if (hasMovement) {
+        gestureType = hasMotion ? 'hand-movement' : 'hand-position'
+        confidence = 0.5
       }
     }
     
-    // Motion history smoothing
+    // Update motion history
     if (motionHistoryRef.current.length > 10) {
       motionHistoryRef.current.shift()
     }
     motionHistoryRef.current.push(motionRatio)
     
-    // Hand position detection with thresholds
+    // Enhanced hand position detection
     const handPosition = {
-      left: hasLeftHandMotion,
-      right: hasRightHandMotion
+      left: hasLeftHandActivity,
+      right: hasRightHandActivity
     }
     
     return {
@@ -426,6 +472,7 @@ export function SignLanguageRecorder({
       handMotionRatio: Math.round((leftHandMotion + rightHandMotion) / samplePixels * 1000) / 1000,
       rightHandRatio: Math.round((rightHandMotion / samplePixels) * 1000) / 1000,
       actualMotionPixels: totalMotion,
+      staticActivity: leftStaticActivity + rightStaticActivity,
       handBounds
     }
   }
@@ -916,16 +963,16 @@ Technical Details:
               <div className="bg-black/75 text-white px-3 py-2 rounded-lg">
                 <div className="flex justify-between items-center">
                   <p className="font-medium">
-                    {!calibrationCompleteRef.current ? `Calibrating... ${baselineMotionRef.current.length}/10` :
+                    {!calibrationCompleteRef.current ? `Calibrating... ${baselineMotionRef.current.length}/8` :
                      currentGesture ? `Detected: ${currentGesture}` :
-                     'Ready - Make gestures with your hands'}
+                     'Ready - Make gestures with your hands or hold static positions'}
                   </p>
                   <div className="text-xs">
                     {gestureConfidence > 0 ? `${Math.round(gestureConfidence * 100)}%` : ''}
                   </div>
                 </div>
                 <Progress 
-                  value={!calibrationCompleteRef.current ? (baselineMotionRef.current.length / 10) * 100 : gestureConfidence * 100} 
+                  value={!calibrationCompleteRef.current ? (baselineMotionRef.current.length / 8) * 100 : gestureConfidence * 100} 
                   className="mt-1 h-1"
                 />
               </div>
@@ -936,7 +983,7 @@ Technical Details:
           {signDetectionActive && (
             <div className="absolute top-4 left-4">
               <Badge variant="outline" className="bg-black/50 text-white border-white/20">
-                AI Detection: {calibrationCompleteRef.current ? 'Ready' : `Calibrating ${baselineMotionRef.current.length}/10`}
+                AI Detection: {calibrationCompleteRef.current ? 'Ready' : `Calibrating ${baselineMotionRef.current.length}/8`}
               </Badge>
             </div>
           )}
@@ -1026,22 +1073,22 @@ Technical Details:
             
             <div className="grid md:grid-cols-3 gap-4">
               <div className="bg-white p-4 rounded-lg border shadow-sm">
-                <h5 className="font-medium text-blue-600 mb-2">Basic Gestures</h5>
+                <h5 className="font-medium text-blue-600 mb-2">Static Positions</h5>
                 <ul className="text-sm space-y-1">
-                  <li>👋 <strong>Wave</strong> - Move hand side to side</li>
-                  <li>✋ <strong>Stop</strong> - Palm forward, firm</li>
-                  <li>👍 <strong>Good/Yes</strong> - Thumb up</li>
-                  <li>🤝 <strong>Hello</strong> - Open hand, slight wave</li>
+                  <li>✋ <strong>Stop</strong> - Hold palm forward</li>
+                  <li>☝️ <strong>Point/One</strong> - Hold index finger up</li>
+                  <li>👍 <strong>Good/Yes</strong> - Hold thumb up</li>
+                  <li>🤟 <strong>Ready</strong> - Hold both hands steady</li>
                 </ul>
               </div>
 
               <div className="bg-white p-4 rounded-lg border shadow-sm">
-                <h5 className="font-medium text-green-600 mb-2">Complaint Words</h5>
+                <h5 className="font-medium text-green-600 mb-2">Motion Gestures</h5>
                 <ul className="text-sm space-y-1">
-                  <li>📋 <strong>Problem</strong> - Index finger tap forehead</li>
+                  <li>👋 <strong>Wave</strong> - Move hand side to side</li>
+                  <li>📋 <strong>Problem</strong> - Tap forehead with finger</li>
                   <li>🔧 <strong>Help</strong> - One hand supports other</li>
-                  <li>⚠️ <strong>Important</strong> - Index finger point up</li>
-                  <li>📝 <strong>Complaint</strong> - Writing motion</li>
+                  <li>📝 <strong>Writing</strong> - Writing motion in air</li>
                 </ul>
               </div>
 
@@ -1058,8 +1105,8 @@ Technical Details:
 
             <div className="mt-4 p-3 bg-blue-100 rounded-lg">
               <p className="text-sm text-blue-800">
-                <strong>Test Instructions:</strong> Try making these signs clearly in front of the camera. 
-                The system will show colored boxes around detected hand movements and display confidence levels.
+                <strong>Test Instructions:</strong> Try both static positions (hold steady) and motion gestures clearly in front of the camera. 
+                The system will show colored boxes around detected hands and display confidence levels for both moving and stationary hands.
               </p>
             </div>
 
@@ -1083,7 +1130,7 @@ Technical Details:
                 <span className="text-blue-600 font-medium">System Status:</span>
                 <p className="text-muted-foreground">
                   {!calibrationCompleteRef.current 
-                    ? `Quick calibration: ${baselineMotionRef.current.length}/10 frames` 
+                    ? `Quick calibration: ${baselineMotionRef.current.length}/8 frames` 
                     : 'Active and ready'
                   }
                 </p>
@@ -1126,7 +1173,7 @@ Technical Details:
 
             <div className="mt-4 text-xs text-muted-foreground">
               {!calibrationCompleteRef.current ? (
-                <p>🔧 Quick calibration in progress... ({baselineMotionRef.current.length}/10 frames)</p>
+                <p>🔧 Quick calibration in progress... ({baselineMotionRef.current.length}/8 frames)</p>
               ) : (
                 <>
                   {currentGesture ? (
@@ -1139,7 +1186,7 @@ Technical Details:
                       )}
                     </p>
                   ) : (
-                    <p>👋 Move your hands to see real-time tracking - try different gestures</p>
+                    <p>👋 Move your hands OR hold static positions to see tracking - both motion and stillness detected</p>
                   )}
                 </>
               )}
@@ -1172,17 +1219,19 @@ Technical Details:
           <h4 className="font-medium mb-1">Enhanced Detection Features:</h4>
           <ul className="space-y-1">
             <li>• 🎯 <strong>Visual Hand Tracking:</strong> Blue boxes for left hand, green boxes for right hand</li>
-            <li>• 🧠 Real-time motion analysis with luminance-based detection</li>
-            <li>• 🛡️ Noise filtering to reduce false positives from lighting changes</li>
-            <li>• 📍 Bounding box generation for precise hand region tracking</li>
+            <li>• 🤚 <strong>Static Position Detection:</strong> Recognizes held signs and steady hand positions</li>
+            <li>• 🏃 <strong>Motion Analysis:</strong> Detects active gestures and hand movements</li>
+            <li>• 🧠 <strong>Edge Detection:</strong> Uses contrast analysis to identify hand-like shapes</li>
+            <li>• 🛡️ <strong>Noise Filtering:</strong> Reduces false positives from lighting changes</li>
+            <li>• 📍 <strong>Dual Detection:</strong> Combines frame differencing with static shape recognition</li>
           </ul>
           <div className="mt-2 p-2 bg-blue-100 rounded text-xs">
             <p><strong>Try the examples above!</strong> The system will show colored boxes around your hands and detect common BSL signs. 
             {(!currentGesture || gestureConfidence < 0.3) && (
               <span className="block mt-1">
                 {!calibrationCompleteRef.current
-                  ? `System is calibrating quickly (${baselineMotionRef.current.length}/10 frames complete).`
-                  : 'Make clear gestures with good lighting for best results.'
+                  ? `System is calibrating quickly (${baselineMotionRef.current.length}/8 frames complete).`
+                  : 'Make clear gestures OR hold static positions with good lighting for best results.'
                 }
               </span>
             )}

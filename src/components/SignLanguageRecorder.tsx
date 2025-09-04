@@ -93,24 +93,24 @@ export function SignLanguageRecorder({
         if (videoRef.current && videoRef.current.videoWidth > 0) {
           initializeBasicDetection()
         } else {
-          setTimeout(checkVideoReady, 500)
+          setTimeout(checkVideoReady, 200) // Reduced delay
         }
       }
-      setTimeout(checkVideoReady, 1000)
+      setTimeout(checkVideoReady, 500) // Reduced initial delay
     }
   }, [hasPermission])
 
   const initializeBasicDetection = () => {
     // Initialize enhanced real-time gesture recognition
     setSignDetectionActive(true)
-    console.log('Gesture detection initialized - starting pre-recording analysis')
+    console.log('Gesture detection initialized - starting fast calibration')
     
-    // Start pre-recording gesture analysis for better responsiveness
+    // Start pre-recording gesture analysis quickly
     setTimeout(() => {
       if (videoRef.current && !isRecording) {
         startPreRecordingAnalysis()
       }
-    }, 2000) // Give camera more time to fully initialize
+    }, 500) // Reduced from 2000ms
     
     toast.success('Real-time gesture detection active - try waving or moving your hands!')
   }
@@ -126,12 +126,12 @@ export function SignLanguageRecorder({
       if (videoRef.current && videoRef.current.videoWidth > 0) {
         analyzeGestureFrame()
       }
-    }, 150) // Slightly slower during pre-recording to allow calibration
+    }, 100) // Faster analysis rate
     
-    // Stop pre-analysis after 60 seconds
+    // Stop pre-analysis after 30 seconds (reduced from 60)
     setTimeout(() => {
       clearInterval(preAnalysisInterval)
-    }, 60000)
+    }, 30000)
   }
 
   const cleanupDetection = () => {
@@ -257,17 +257,18 @@ export function SignLanguageRecorder({
     const samplePixels = pixels.length / 16
     const motionRatio = totalMotion / samplePixels
     
-    // Baseline calibration for environmental adaptation
-    if (!calibrationCompleteRef.current && baselineMotionRef.current.length < 30) {
+    // Baseline calibration for environmental adaptation - faster calibration
+    if (!calibrationCompleteRef.current && baselineMotionRef.current.length < 10) {
       baselineMotionRef.current.push(motionRatio)
-      if (baselineMotionRef.current.length === 30) {
+      if (baselineMotionRef.current.length === 10) {
         calibrationCompleteRef.current = true
-        console.log('Gesture detection calibrated - baseline motion:', 
-          baselineMotionRef.current.reduce((a, b) => a + b) / 30)
+        console.log('Gesture detection calibrated quickly - baseline motion:', 
+          baselineMotionRef.current.reduce((a, b) => a + b) / 10)
+        toast.success('Calibration complete - ready for sign recognition!')
       }
     }
     
-    // Calculate dynamic thresholds based on baseline
+    // Calculate dynamic thresholds based on baseline - quicker adaptation
     const averageBaseline = calibrationCompleteRef.current ? 
       baselineMotionRef.current.reduce((a, b) => a + b) / baselineMotionRef.current.length : 0.01
     
@@ -789,12 +790,12 @@ Technical Details:
             <div className="absolute bottom-16 left-4 right-4">
               <div className="bg-black/75 text-white px-3 py-2 rounded-lg">
                 <p className="font-medium">
-                  {!calibrationCompleteRef.current ? 'Calibrating...' :
+                  {!calibrationCompleteRef.current ? `Calibrating... ${baselineMotionRef.current.length}/10` :
                    currentGesture ? `Detected: ${currentGesture}` :
                    'Ready - Make clear signs with your hands'}
                 </p>
                 <Progress 
-                  value={gestureConfidence * 100} 
+                  value={!calibrationCompleteRef.current ? (baselineMotionRef.current.length / 10) * 100 : gestureConfidence * 100} 
                   className="mt-1 h-1"
                   variant={gestureConfidence > 0.5 ? "default" : "secondary"}
                   style={{
@@ -811,7 +812,7 @@ Technical Details:
           {signDetectionActive && (
             <div className="absolute top-4 left-4">
               <Badge variant="outline" className="bg-black/50 text-white border-white/20">
-                AI Detection: {calibrationCompleteRef.current ? 'Ready' : 'Calibrating'}
+                AI Detection: {calibrationCompleteRef.current ? 'Ready' : `Calibrating ${baselineMotionRef.current.length}/10`}
               </Badge>
             </div>
           )}
@@ -896,7 +897,7 @@ Technical Details:
                 <span className="text-blue-600 font-medium">System Status:</span>
                 <p className="text-muted-foreground">
                   {!calibrationCompleteRef.current 
-                    ? 'Learning your environment...' 
+                    ? `Quick calibration: ${baselineMotionRef.current.length}/10 frames` 
                     : 'Active and ready'
                   }
                 </p>
@@ -924,7 +925,7 @@ Technical Details:
 
             <div className="mt-4 text-xs text-muted-foreground">
               {!calibrationCompleteRef.current ? (
-                <p>🔧 Please stay still for a moment while we calibrate...</p>
+                <p>🔧 Quick calibration in progress... ({baselineMotionRef.current.length}/10 frames)</p>
               ) : (
                 <>
                   {currentGesture ? (
@@ -973,7 +974,7 @@ Technical Details:
             {(!currentGesture || gestureConfidence < 0.3) && (
               <span className="block mt-1">
                 {!calibrationCompleteRef.current
-                  ? 'System is learning your environment and lighting conditions.'
+                  ? `Quick setup in progress (${baselineMotionRef.current.length}/10 frames).`
                   : 'Try making clear gestures with your hands to see real-time detection.'
                 }
               </span>

@@ -22,6 +22,10 @@ interface GestureFrame {
   gestureType?: string
   handPosition?: { left: boolean, right: boolean }
   recognizedSigns?: string[]
+  handBounds?: {
+    left?: { x: number, y: number, width: number, height: number }
+    right?: { x: number, y: number, width: number, height: number }
+  }
 }
 
 export function SignLanguageRecorder({ 
@@ -41,6 +45,8 @@ export function SignLanguageRecorder({
   const [signDetectionActive, setSignDetectionActive] = useState(false)
   const [generatedTranscript, setGeneratedTranscript] = useState('')
   const [showFallbackOption, setShowFallbackOption] = useState(false)
+  const [handBoxes, setHandBoxes] = useState<{ left?: any, right?: any }>({})
+  const [showSignExamples, setShowSignExamples] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -168,14 +174,17 @@ export function SignLanguageRecorder({
           gestureType: gestureResult.gestureType,
           handPosition: gestureResult.handPosition,
           recognizedSigns: gestureResult.recognizedSigns,
+          handBounds: gestureResult.handBounds,
         };
         
         setRealtimeGestures(prev => [...prev.slice(-29), newFrame]);
+        setHandBoxes(gestureResult.handBounds || {});
       } else {
         framesSinceLastMotionRef.current++
         if (framesSinceLastMotionRef.current > 10) {
           setCurrentGesture(null)
           setGestureConfidence(0)
+          setHandBoxes({})
         }
       }
     } catch (error) {
@@ -194,7 +203,8 @@ export function SignLanguageRecorder({
         recognizedSigns: null,
         handMotionRatio: 0,
         rightHandRatio: 0,
-        actualMotionPixels: 0
+        actualMotionPixels: 0,
+        handBounds: undefined
       }
     }
 
@@ -218,6 +228,10 @@ export function SignLanguageRecorder({
     let centerMotion = 0
     let edgeMotion = 0
     
+    // Track motion regions for hand bounding boxes
+    const leftMotionPixels: {x: number, y: number}[] = []
+    const rightMotionPixels: {x: number, y: number}[] = []
+    
     if (previousFrameRef.current) {
       const prevPixels = previousFrameRef.current.data
       
@@ -237,10 +251,12 @@ export function SignLanguageRecorder({
           const y = Math.floor(pixelIndex / width)
           
           // More precise hand regions
-          if (x < width * 0.35) {
+          if (x < width * 0.4) {
             leftHandMotion++
-          } else if (x > width * 0.65) {
+            leftMotionPixels.push({x, y})
+          } else if (x > width * 0.6) {
             rightHandMotion++
+            rightMotionPixels.push({x, y})
           } else {
             centerMotion++
           }
@@ -256,6 +272,37 @@ export function SignLanguageRecorder({
     previousFrameRef.current = imageData
     const samplePixels = pixels.length / 16
     const motionRatio = totalMotion / samplePixels
+    
+    // Create hand bounding boxes
+    const handBounds: any = {}
+    
+    if (leftMotionPixels.length > 10) {
+      const minX = Math.min(...leftMotionPixels.map(p => p.x))
+      const maxX = Math.max(...leftMotionPixels.map(p => p.x))
+      const minY = Math.min(...leftMotionPixels.map(p => p.y))
+      const maxY = Math.max(...leftMotionPixels.map(p => p.y))
+      
+      handBounds.left = {
+        x: (minX / width) * 100,
+        y: (minY / height) * 100,
+        width: ((maxX - minX) / width) * 100,
+        height: ((maxY - minY) / height) * 100
+      }
+    }
+    
+    if (rightMotionPixels.length > 10) {
+      const minX = Math.min(...rightMotionPixels.map(p => p.x))
+      const maxX = Math.max(...rightMotionPixels.map(p => p.x))
+      const minY = Math.min(...rightMotionPixels.map(p => p.y))
+      const maxY = Math.max(...rightMotionPixels.map(p => p.y))
+      
+      handBounds.right = {
+        x: (minX / width) * 100,
+        y: (minY / height) * 100,
+        width: ((maxX - minX) / width) * 100,
+        height: ((maxY - minY) / height) * 100
+      }
+    }
     
     // Baseline calibration for environmental adaptation - faster calibration
     if (!calibrationCompleteRef.current && baselineMotionRef.current.length < 10) {
@@ -338,7 +385,8 @@ export function SignLanguageRecorder({
       recognizedSigns,
       handMotionRatio: Math.round((leftHandMotion + rightHandMotion) / samplePixels * 1000) / 1000,
       rightHandRatio: Math.round((rightHandMotion / samplePixels) * 1000) / 1000,
-      actualMotionPixels: totalMotion
+      actualMotionPixels: totalMotion,
+      handBounds
     }
   }
 
@@ -775,6 +823,43 @@ Technical Details:
             className="w-full h-full object-cover"
           />
           
+          {/* Hand tracking overlays */}
+          {signDetectionActive && handBoxes.left && (
+            <div 
+              className="absolute border-2 border-blue-400 bg-blue-400/10"
+              style={{
+                left: `${handBoxes.left.x}%`,
+                top: `${handBoxes.left.y}%`,
+                width: `${Math.max(handBoxes.left.width, 8)}%`,
+                height: `${Math.max(handBoxes.left.height, 8)}%`,
+                minWidth: '40px',
+                minHeight: '40px'
+              }}
+            >
+              <div className="absolute -top-6 left-0 bg-blue-400 text-white px-2 py-1 rounded text-xs font-medium">
+                Left Hand
+              </div>
+            </div>
+          )}
+          
+          {signDetectionActive && handBoxes.right && (
+            <div 
+              className="absolute border-2 border-green-400 bg-green-400/10"
+              style={{
+                left: `${handBoxes.right.x}%`,
+                top: `${handBoxes.right.y}%`,
+                width: `${Math.max(handBoxes.right.width, 8)}%`,
+                height: `${Math.max(handBoxes.right.height, 8)}%`,
+                minWidth: '40px',
+                minHeight: '40px'
+              }}
+            >
+              <div className="absolute -top-6 right-0 bg-green-400 text-white px-2 py-1 rounded text-xs font-medium">
+                Right Hand
+              </div>
+            </div>
+          )}
+          
           {/* Recording indicator */}
           {isRecording && (
             <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -828,6 +913,14 @@ Technical Details:
               >
                 <VideoCamera className="h-5 w-5 mr-2" />
                 Start Recording
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => setShowSignExamples(!showSignExamples)}
+                size="lg"
+              >
+                <Eye className="h-5 w-5 mr-2" />
+                {showSignExamples ? 'Hide' : 'Show'} Sign Examples
               </Button>
             </>
           ) : isRecording ? (
@@ -887,10 +980,64 @@ Technical Details:
           </Button>
         </div>
 
+        {/* Sign language examples panel */}
+        {showSignExamples && !isRecording && (
+          <div className="bg-gradient-to-br from-blue-50 to-green-50 border border-blue-200 p-6 rounded-lg">
+            <h4 className="font-semibold mb-4 text-center">BSL Sign Examples to Test Detection</h4>
+            
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="bg-white p-4 rounded-lg border shadow-sm">
+                <h5 className="font-medium text-blue-600 mb-2">Basic Gestures</h5>
+                <ul className="text-sm space-y-1">
+                  <li>👋 <strong>Wave</strong> - Move hand side to side</li>
+                  <li>✋ <strong>Stop</strong> - Palm forward, firm</li>
+                  <li>👍 <strong>Good/Yes</strong> - Thumb up</li>
+                  <li>🤝 <strong>Hello</strong> - Open hand, slight wave</li>
+                </ul>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg border shadow-sm">
+                <h5 className="font-medium text-green-600 mb-2">Complaint Words</h5>
+                <ul className="text-sm space-y-1">
+                  <li>📋 <strong>Problem</strong> - Index finger tap forehead</li>
+                  <li>🔧 <strong>Help</strong> - One hand supports other</li>
+                  <li>⚠️ <strong>Important</strong> - Index finger point up</li>
+                  <li>📝 <strong>Complaint</strong> - Writing motion</li>
+                </ul>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg border shadow-sm">
+                <h5 className="font-medium text-purple-600 mb-2">Two-Hand Signs</h5>
+                <ul className="text-sm space-y-1">
+                  <li>🙏 <strong>Please</strong> - Palms together</li>
+                  <li>🤲 <strong>Thank you</strong> - Touch lips, move out</li>
+                  <li>💰 <strong>Money</strong> - Rub fingers together</li>
+                  <li>📞 <strong>Contact</strong> - Phone gesture</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Test Instructions:</strong> Try making these signs clearly in front of the camera. 
+                The system will show colored boxes around detected hand movements and display confidence levels.
+              </p>
+            </div>
+
+            <div className="mt-3 p-3 bg-green-100 rounded-lg">
+              <p className="text-sm text-green-800">
+                <strong>Visual Feedback:</strong> 
+                <span className="inline-block w-3 h-3 bg-blue-400 ml-2 mr-1 rounded"></span> Blue boxes = Left hand | 
+                <span className="inline-block w-3 h-3 bg-green-400 ml-2 mr-1 rounded"></span> Green boxes = Right hand
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Real-time gesture detection panel */}
         {signDetectionActive && (
           <div className="bg-muted/50 p-4 rounded-lg">
-            <h4 className="font-medium mb-2">Real-time Gesture Detection</h4>
+            <h4 className="font-medium mb-2">Real-time Hand Tracking</h4>
             
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
@@ -906,6 +1053,21 @@ Technical Details:
                 <span className="text-green-600 font-medium">Signs Detected:</span>
                 <p className="text-muted-foreground">
                   {realtimeGestures.length} total
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+              <div>
+                <span className="text-blue-400 font-medium">Left Hand:</span>
+                <p className="text-muted-foreground">
+                  {handBoxes.left ? '✓ Detected' : '○ Not detected'}
+                </p>
+              </div>
+              <div>
+                <span className="text-green-400 font-medium">Right Hand:</span>
+                <p className="text-muted-foreground">
+                  {handBoxes.right ? '✓ Detected' : '○ Not detected'}
                 </p>
               </div>
             </div>
@@ -933,7 +1095,7 @@ Technical Details:
                       ✅ Detected: {currentGesture} ({Math.round(gestureConfidence * 100)}% confidence)
                     </p>
                   ) : (
-                    <p>👋 Move your hands to see gesture detection in action</p>
+                    <p>👋 Move your hands to see real-time tracking - boxes will appear around detected hands</p>
                   )}
                 </>
               )}
@@ -963,19 +1125,20 @@ Technical Details:
         </div>
 
         <div className="bg-muted/50 p-3 rounded-lg text-xs text-muted-foreground">
-          <h4 className="font-medium mb-1">Detection Features:</h4>
+          <h4 className="font-medium mb-1">Enhanced Detection Features:</h4>
           <ul className="space-y-1">
-            <li>• 🎨 Luminance-based motion tracking</li>
-            <li>• 🧠 Edge detection and hand region analysis</li>
-            <li>• 🛡️ Sustained motion filtering (reduces false positives)</li>
+            <li>• 🎯 <strong>Visual Hand Tracking:</strong> Blue boxes for left hand, green boxes for right hand</li>
+            <li>• 🧠 Real-time motion analysis with luminance-based detection</li>
+            <li>• 🛡️ Noise filtering to reduce false positives from lighting changes</li>
+            <li>• 📍 Bounding box generation for precise hand region tracking</li>
           </ul>
           <div className="mt-2 p-2 bg-blue-100 rounded text-xs">
-            <p><strong>Note:</strong> This is an accessibility tool designed to help create complaint transcripts. 
+            <p><strong>Try the examples above!</strong> The system will show colored boxes around your hands and detect common BSL signs. 
             {(!currentGesture || gestureConfidence < 0.3) && (
               <span className="block mt-1">
                 {!calibrationCompleteRef.current
-                  ? `Quick setup in progress (${baselineMotionRef.current.length}/10 frames).`
-                  : 'Try making clear gestures with your hands to see real-time detection.'
+                  ? `System is calibrating quickly (${baselineMotionRef.current.length}/10 frames complete).`
+                  : 'Make clear gestures with good lighting for best results.'
                 }
               </span>
             )}

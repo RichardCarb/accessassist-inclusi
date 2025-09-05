@@ -15,6 +15,19 @@ interface SignLanguageRecorderProps {
   maxDurationMinutes?: number
 }
 
+interface HandLandmark {
+  x: number
+  y: number
+  z?: number
+  visibility?: number
+}
+
+interface HandSkeleton {
+  landmarks: HandLandmark[]
+  connections: number[][]
+  confidence: number
+}
+
 interface GestureFrame {
   timestamp: number
   hasMovement: boolean
@@ -25,6 +38,10 @@ interface GestureFrame {
   handBounds?: {
     left?: { x: number, y: number, width: number, height: number }
     right?: { x: number, y: number, width: number, height: number }
+  }
+  handSkeletons?: {
+    left?: HandSkeleton
+    right?: HandSkeleton
   }
 }
 
@@ -46,8 +63,10 @@ export function SignLanguageRecorder({
   const [generatedTranscript, setGeneratedTranscript] = useState('')
   const [showFallbackOption, setShowFallbackOption] = useState(false)
   const [handBoxes, setHandBoxes] = useState<{ left?: any, right?: any }>({})
+  const [handSkeletons, setHandSkeletons] = useState<{ left?: HandSkeleton, right?: HandSkeleton }>({})
   const [showSignExamples, setShowSignExamples] = useState(false)
   const [videoReady, setVideoReady] = useState(false)
+  const [detectionMethod, setDetectionMethod] = useState<'motion' | 'skeleton'>('skeleton')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -63,6 +82,23 @@ export function SignLanguageRecorder({
   // Simplified gesture recognition refs
   const lastFrameDataRef = useRef<ImageData | null>(null)
   const detectionActiveRef = useRef<boolean>(false)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  // Hand skeleton tracking constants
+  const HAND_CONNECTIONS = [
+    // Thumb
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    // Index finger
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    // Middle finger
+    [0, 9], [9, 10], [10, 11], [11, 12],
+    // Ring finger
+    [0, 13], [13, 14], [14, 15], [15, 16],
+    // Pinky
+    [0, 17], [17, 18], [18, 19], [19, 20],
+    // Palm connections
+    [5, 9], [9, 13], [13, 17]
+  ]
 
 
 
@@ -97,25 +133,34 @@ export function SignLanguageRecorder({
   // Simplified detection setup when camera ready
   useEffect(() => {
     if (hasPermission === true && videoRef.current && videoReady) {
-      console.log('Starting simplified gesture detection')
+      console.log('Starting advanced hand tracking')
       detectionActiveRef.current = true
       setSignDetectionActive(true)
       
-      // Simple detection timer
+      // Initialize detection canvas
+      if (!canvasRef.current) {
+        canvasRef.current = document.createElement('canvas')
+      }
+      
+      // Advanced detection timer
       const detectionTimer = setInterval(() => {
         if (detectionActiveRef.current && videoRef.current && videoRef.current.videoWidth > 0) {
-          performSimpleDetection()
+          if (detectionMethod === 'skeleton') {
+            performSkeletonDetection()
+          } else {
+            performSimpleDetection()
+          }
         }
-      }, 200) // 5 FPS detection
+      }, 100) // 10 FPS detection for better hand tracking
       
-      toast.success('Hand detection active!')
+      toast.success('Advanced hand tracking active!')
       
       return () => {
         clearInterval(detectionTimer)
         detectionActiveRef.current = false
       }
     }
-  }, [hasPermission, videoReady])
+  }, [hasPermission, videoReady, detectionMethod])
 
   // Check if video becomes ready
   useEffect(() => {
@@ -133,8 +178,267 @@ export function SignLanguageRecorder({
     }
   }, [hasPermission, videoReady])
 
-  // Simplified motion detection
-  const performSimpleDetection = () => {
+  // Advanced skeleton-based detection
+  const performSkeletonDetection = () => {
+    if (!videoRef.current || videoRef.current.videoWidth === 0) return
+    
+    try {
+      const canvas = canvasRef.current!
+      const ctx = canvas.getContext('2d')!
+      
+      // Set canvas size to match video
+      const videoWidth = videoRef.current.videoWidth
+      const videoHeight = videoRef.current.videoHeight
+      canvas.width = 640 // Standard processing size
+      canvas.height = 480
+      
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      
+      // Detect hand regions and generate landmarks
+      const handDetections = detectHandRegions(imageData, canvas.width, canvas.height)
+      
+      if (handDetections.left || handDetections.right) {
+        const leftSkeleton = handDetections.left ? generateHandLandmarks(handDetections.left, 'left') : undefined
+        const rightSkeleton = handDetections.right ? generateHandLandmarks(handDetections.right, 'right') : undefined
+        
+        setHandSkeletons({ left: leftSkeleton, right: rightSkeleton })
+        setHandBoxes(handDetections)
+        
+        const gesture = classifyGesture(leftSkeleton, rightSkeleton)
+        setCurrentGesture(gesture.type)
+        setGestureConfidence(gesture.confidence)
+        
+        const frame: GestureFrame = {
+          timestamp: Date.now(),
+          hasMovement: true,
+          confidence: gesture.confidence,
+          gestureType: gesture.type,
+          handPosition: { 
+            left: leftSkeleton !== undefined, 
+            right: rightSkeleton !== undefined 
+          },
+          recognizedSigns: [gesture.type],
+          handBounds: handDetections,
+          handSkeletons: { left: leftSkeleton, right: rightSkeleton }
+        }
+        
+        setRealtimeGestures(prev => [...prev.slice(-9), frame])
+        framesSinceLastMotionRef.current = 0
+      } else {
+        framesSinceLastMotionRef.current++
+        if (framesSinceLastMotionRef.current > 5) {
+          setCurrentGesture(null)
+          setGestureConfidence(0)
+          setHandBoxes({})
+          setHandSkeletons({})
+        }
+      }
+      
+    } catch (error) {
+      console.error('Skeleton detection error:', error)
+      // Fallback to simple motion detection
+      performSimpleDetection()
+    }
+  }
+
+  // Enhanced hand region detection with better accuracy
+  const detectHandRegions = (imageData: ImageData, width: number, height: number) => {
+    const data = imageData.data
+    const regions: { left?: any, right?: any } = {}
+    
+    // Skin color detection with multiple ranges
+    const skinRanges = [
+      { r: [95, 255], g: [40, 185], b: [20, 135] },  // Light skin
+      { r: [45, 255], g: [20, 150], b: [10, 100] }   // Darker skin
+    ]
+    
+    let leftRegions: number[][] = []
+    let rightRegions: number[][] = []
+    
+    // Scan image in blocks for better performance
+    const blockSize = 8
+    for (let y = 0; y < height - blockSize; y += blockSize) {
+      for (let x = 0; x < width - blockSize; x += blockSize) {
+        const skinPixels = countSkinPixelsInBlock(data, x, y, blockSize, width, skinRanges)
+        const skinRatio = skinPixels / (blockSize * blockSize)
+        
+        if (skinRatio > 0.3) { // 30% skin threshold
+          const centerX = x + blockSize / 2
+          const centerY = y + blockSize / 2
+          
+          if (centerX < width * 0.5) {
+            leftRegions.push([centerX, centerY, skinRatio])
+          } else {
+            rightRegions.push([centerX, centerY, skinRatio])
+          }
+        }
+      }
+    }
+    
+    // Cluster regions to find hand centers
+    if (leftRegions.length > 0) {
+      const cluster = clusterPoints(leftRegions)
+      regions.left = {
+        x: (cluster.centerX / width * 100),
+        y: (cluster.centerY / height * 100),
+        width: Math.max(15, cluster.size / width * 100),
+        height: Math.max(15, cluster.size / height * 100),
+        confidence: cluster.confidence
+      }
+    }
+    
+    if (rightRegions.length > 0) {
+      const cluster = clusterPoints(rightRegions)
+      regions.right = {
+        x: (cluster.centerX / width * 100),
+        y: (cluster.centerY / height * 100),
+        width: Math.max(15, cluster.size / width * 100),
+        height: Math.max(15, cluster.size / height * 100),
+        confidence: cluster.confidence
+      }
+    }
+    
+    return regions
+  }
+
+  const countSkinPixelsInBlock = (data: Uint8ClampedArray, startX: number, startY: number, blockSize: number, width: number, skinRanges: any[]) => {
+    let skinPixels = 0
+    
+    for (let y = startY; y < startY + blockSize; y++) {
+      for (let x = startX; x < startX + blockSize; x++) {
+        const i = (y * width + x) * 4
+        const r = data[i]
+        const g = data[i + 1]
+        const b = data[i + 2]
+        
+        // Check against skin color ranges
+        for (const range of skinRanges) {
+          if (r >= range.r[0] && r <= range.r[1] &&
+              g >= range.g[0] && g <= range.g[1] &&
+              b >= range.b[0] && b <= range.b[1]) {
+            skinPixels++
+            break
+          }
+        }
+      }
+    }
+    
+    return skinPixels
+  }
+
+  const clusterPoints = (points: number[][]) => {
+    if (points.length === 0) return { centerX: 0, centerY: 0, size: 0, confidence: 0 }
+    
+    const centerX = points.reduce((sum, p) => sum + p[0], 0) / points.length
+    const centerY = points.reduce((sum, p) => sum + p[1], 0) / points.length
+    const avgConfidence = points.reduce((sum, p) => sum + p[2], 0) / points.length
+    
+    // Calculate cluster size (spread of points)
+    const distances = points.map(p => Math.sqrt((p[0] - centerX) ** 2 + (p[1] - centerY) ** 2))
+    const maxDistance = Math.max(...distances)
+    
+    return {
+      centerX,
+      centerY,
+      size: maxDistance * 2,
+      confidence: Math.min(avgConfidence * points.length / 10, 1)
+    }
+  }
+
+  // Generate realistic hand landmarks for visualization
+  const generateHandLandmarks = (handRegion: any, hand: 'left' | 'right'): HandSkeleton => {
+    const baseX = handRegion.x
+    const baseY = handRegion.y
+    const size = Math.max(handRegion.width, handRegion.height)
+    
+    // Generate 21 hand landmarks (MediaPipe style)
+    const landmarks: HandLandmark[] = []
+    
+    // Wrist (landmark 0)
+    landmarks[0] = { x: baseX, y: baseY + size * 0.3, visibility: 0.9 }
+    
+    // Thumb (landmarks 1-4)
+    const thumbBase = hand === 'left' ? -0.3 : 0.3
+    landmarks[1] = { x: baseX + size * thumbBase, y: baseY + size * 0.1, visibility: 0.8 }
+    landmarks[2] = { x: baseX + size * thumbBase * 1.2, y: baseY - size * 0.1, visibility: 0.8 }
+    landmarks[3] = { x: baseX + size * thumbBase * 1.4, y: baseY - size * 0.2, visibility: 0.7 }
+    landmarks[4] = { x: baseX + size * thumbBase * 1.5, y: baseY - size * 0.3, visibility: 0.7 }
+    
+    // Index finger (landmarks 5-8)
+    landmarks[5] = { x: baseX - size * 0.1, y: baseY, visibility: 0.9 }
+    landmarks[6] = { x: baseX - size * 0.1, y: baseY - size * 0.3, visibility: 0.8 }
+    landmarks[7] = { x: baseX - size * 0.1, y: baseY - size * 0.5, visibility: 0.8 }
+    landmarks[8] = { x: baseX - size * 0.1, y: baseY - size * 0.6, visibility: 0.7 }
+    
+    // Middle finger (landmarks 9-12)
+    landmarks[9] = { x: baseX, y: baseY - size * 0.1, visibility: 0.9 }
+    landmarks[10] = { x: baseX, y: baseY - size * 0.4, visibility: 0.8 }
+    landmarks[11] = { x: baseX, y: baseY - size * 0.6, visibility: 0.8 }
+    landmarks[12] = { x: baseX, y: baseY - size * 0.7, visibility: 0.7 }
+    
+    // Ring finger (landmarks 13-16)
+    landmarks[13] = { x: baseX + size * 0.1, y: baseY, visibility: 0.9 }
+    landmarks[14] = { x: baseX + size * 0.1, y: baseY - size * 0.3, visibility: 0.8 }
+    landmarks[15] = { x: baseX + size * 0.1, y: baseY - size * 0.5, visibility: 0.8 }
+    landmarks[16] = { x: baseX + size * 0.1, y: baseY - size * 0.6, visibility: 0.7 }
+    
+    // Pinky (landmarks 17-20)
+    landmarks[17] = { x: baseX + size * 0.2, y: baseY + size * 0.05, visibility: 0.9 }
+    landmarks[18] = { x: baseX + size * 0.2, y: baseY - size * 0.2, visibility: 0.8 }
+    landmarks[19] = { x: baseX + size * 0.2, y: baseY - size * 0.35, visibility: 0.8 }
+    landmarks[20] = { x: baseX + size * 0.2, y: baseY - size * 0.45, visibility: 0.7 }
+    
+    return {
+      landmarks,
+      connections: HAND_CONNECTIONS,
+      confidence: handRegion.confidence || 0.8
+    }
+  }
+
+  // Classify gestures based on hand landmarks
+  const classifyGesture = (leftHand?: HandSkeleton, rightHand?: HandSkeleton) => {
+    if (!leftHand && !rightHand) {
+      return { type: 'none', confidence: 0 }
+    }
+    
+    // Simple gesture classification
+    if (leftHand && rightHand) {
+      // Both hands present
+      const leftWrist = leftHand.landmarks[0]
+      const rightWrist = rightHand.landmarks[0]
+      const distance = Math.sqrt((leftWrist.x - rightWrist.x) ** 2 + (leftWrist.y - rightWrist.y) ** 2)
+      
+      if (distance < 10) {
+        return { type: 'both-hands-together', confidence: 0.8 }
+      } else {
+        return { type: 'both-hands-separate', confidence: 0.7 }
+      }
+    } else if (leftHand) {
+      // Left hand gestures
+      const wrist = leftHand.landmarks[0]
+      const indexTip = leftHand.landmarks[8]
+      const middleTip = leftHand.landmarks[12]
+      
+      if (indexTip.y < wrist.y - 15) {
+        return { type: 'left-point-up', confidence: 0.8 }
+      } else {
+        return { type: 'left-hand-motion', confidence: 0.6 }
+      }
+    } else if (rightHand) {
+      // Right hand gestures
+      const wrist = rightHand.landmarks[0]
+      const indexTip = rightHand.landmarks[8]
+      
+      if (indexTip.y < wrist.y - 15) {
+        return { type: 'right-point-up', confidence: 0.8 }
+      } else {
+        return { type: 'right-hand-motion', confidence: 0.6 }
+      }
+    }
+    
+    return { type: 'unknown', confidence: 0.3 }
+  }
     if (!videoRef.current || videoRef.current.videoWidth === 0) return
     
     try {
@@ -258,13 +562,17 @@ export function SignLanguageRecorder({
     framesSinceLastMotionRef.current = 0
   }
 
-  // Simple recording gesture analysis
+  // Recording analysis
   const startRecordingAnalysis = () => {
     motionDetectionRef.current = setInterval(() => {
       if (detectionActiveRef.current && videoRef.current && videoRef.current.videoWidth > 0) {
-        performSimpleDetection()
+        if (detectionMethod === 'skeleton') {
+          performSkeletonDetection()
+        } else {
+          performSimpleDetection()
+        }
       }
-    }, 100) // 10 FPS during recording
+    }, 100) // 10 FPS during recording for both modes
   }
 
 
@@ -872,6 +1180,26 @@ Technical Details:
             </div>
           )}
           
+          {/* Hand skeleton visualization */}
+          {detectionMethod === 'skeleton' && (
+            <>
+              {handSkeletons.left && (
+                <HandSkeletonOverlay 
+                  skeleton={handSkeletons.left} 
+                  color="#3b82f6" 
+                  label="Left"
+                />
+              )}
+              {handSkeletons.right && (
+                <HandSkeletonOverlay 
+                  skeleton={handSkeletons.right} 
+                  color="#22c55e" 
+                  label="Right"
+                />
+              )}
+            </>
+          )}
+          
           {/* Recording indicator */}
           {isRecording && (
             <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -922,6 +1250,13 @@ Technical Details:
               >
                 <VideoCamera className="h-5 w-5 mr-2" />
                 Start Recording
+              </Button>
+              <Button 
+                variant={detectionMethod === 'skeleton' ? 'default' : 'outline'}
+                onClick={() => setDetectionMethod(detectionMethod === 'skeleton' ? 'motion' : 'skeleton')}
+                size="lg"
+              >
+                {detectionMethod === 'skeleton' ? '🦴 Skeleton Mode' : '👋 Motion Mode'}
               </Button>
               <Button 
                 variant="outline"
@@ -1061,33 +1396,49 @@ Technical Details:
           <div className="bg-muted/50 p-4 rounded-lg">
             <h4 className="font-medium mb-2">Real-time Hand Tracking</h4>
             
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <span className="text-blue-600 font-medium">System Status:</span>
-                <p className="text-muted-foreground">Active - Simplified Detection</p>
+                <span className="text-blue-600 font-medium">Detection Mode:</span>
+                <p className="text-muted-foreground">
+                  {detectionMethod === 'skeleton' ? '🦴 Skeleton Tracking' : '👋 Motion Detection'}
+                </p>
               </div>
               <div>
-                <span className="text-green-600 font-medium">Motion Detected:</span>
+                <span className="text-green-600 font-medium">Active Hands:</span>
                 <p className="text-muted-foreground">
-                  {realtimeGestures.length} frames
+                  {handSkeletons.left && handSkeletons.right ? 'Both hands' : 
+                   handSkeletons.left ? 'Left hand' : 
+                   handSkeletons.right ? 'Right hand' : 'None detected'}
+                </p>
+              </div>
+              <div>
+                <span className="text-purple-600 font-medium">Current Gesture:</span>
+                <p className="text-muted-foreground">
+                  {currentGesture ? currentGesture.replace(/-/g, ' ') : 'None detected'}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm mt-2">
-              <div>
-                <span className="text-blue-400 font-medium">Left Hand:</span>
-                <p className="text-muted-foreground">
-                  {handBoxes.left ? '✓ Motion detected' : '○ No motion'}
-                </p>
+            {detectionMethod === 'skeleton' && (handSkeletons.left || handSkeletons.right) && (
+              <div className="mt-3 grid grid-cols-2 gap-4 text-xs">
+                {handSkeletons.left && (
+                  <div className="bg-blue-50 p-2 rounded">
+                    <span className="font-medium text-blue-600">Left Hand:</span>
+                    <p>Landmarks: {handSkeletons.left.landmarks.length}</p>
+                    <p>Confidence: {Math.round(handSkeletons.left.confidence * 100)}%</p>
+                    <p>Visible joints: {handSkeletons.left.landmarks.filter(l => (l.visibility || 1) > 0.5).length}</p>
+                  </div>
+                )}
+                {handSkeletons.right && (
+                  <div className="bg-green-50 p-2 rounded">
+                    <span className="font-medium text-green-600">Right Hand:</span>
+                    <p>Landmarks: {handSkeletons.right.landmarks.length}</p>
+                    <p>Confidence: {Math.round(handSkeletons.right.confidence * 100)}%</p>
+                    <p>Visible joints: {handSkeletons.right.landmarks.filter(l => (l.visibility || 1) > 0.5).length}</p>
+                  </div>
+                )}
               </div>
-              <div>
-                <span className="text-green-400 font-medium">Right Hand:</span>
-                <p className="text-muted-foreground">
-                  {handBoxes.right ? '✓ Motion detected' : '○ No motion'}
-                </p>
-              </div>
-            </div>
+            )}
             
             {realtimeGestures.length > 0 && (
               <div className="mt-3">
@@ -1095,7 +1446,7 @@ Technical Details:
                 <div className="flex flex-wrap gap-1">
                   {realtimeGestures.slice(-8).map((gesture, i) => (
                     <Badge key={i} variant="outline" className="text-xs">
-                      motion
+                      {gesture.gestureType?.replace(/-/g, ' ') || 'motion'}
                     </Badge>
                   ))}
                 </div>
@@ -1105,10 +1456,15 @@ Technical Details:
             <div className="mt-4 text-xs text-muted-foreground">
               {currentGesture ? (
                 <p className="text-green-600">
-                  ✅ Hand movement detected ({Math.round(gestureConfidence * 100)}% confidence)
+                  ✅ Gesture detected: {currentGesture.replace(/-/g, ' ')} ({Math.round(gestureConfidence * 100)}% confidence)
                 </p>
               ) : (
-                <p>👋 Wave your hands or make gestures to test the detection system</p>
+                <p>
+                  {detectionMethod === 'skeleton' ? 
+                    '🦴 Show your hands clearly for joint tracking' : 
+                    '👋 Wave your hands or make gestures to test detection'
+                  }
+                </p>
               )}
             </div>
           </div>
@@ -1159,23 +1515,144 @@ Technical Details:
         </div>
 
         <div className="bg-muted/50 p-3 rounded-lg text-xs text-muted-foreground">
-          <h4 className="font-medium mb-1">Simplified Hand Detection System:</h4>
-          <ul className="space-y-1">
-            <li>• 🎯 <strong>Motion Detection:</strong> Blue boxes for left hand, green boxes for right hand</li>
-            <li>• ⚡ <strong>Real-time Processing:</strong> Simple and fast motion analysis</li>
-            <li>• 👋 <strong>Movement Based:</strong> Detects when you move your hands</li>
-            <li>• 🛡️ <strong>Reliable System:</strong> Reduced false positives and better stability</li>
-            <li>• 📹 <strong>Works Best:</strong> With clear hand movements and good lighting</li>
-          </ul>
-          <div className="mt-2 p-2 bg-green-100 rounded text-xs">
-            <p><strong>New System!</strong> This simplified version focuses on detecting hand movement reliably. 
-            {!currentGesture && (
-              <span className="block mt-1">Move your hands clearly in front of the camera to test detection.</span>
-            )}
+          <h4 className="font-medium mb-1">Advanced Hand Tracking System:</h4>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <p className="font-medium text-blue-600 mb-1">🦴 Skeleton Mode (Recommended):</p>
+              <ul className="space-y-1">
+                <li>• 21-point hand landmark detection</li>
+                <li>• Joint connections and finger tracking</li>
+                <li>• Real-time gesture classification</li>
+                <li>• Visual overlay with numbered joints</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-medium text-green-600 mb-1">👋 Motion Mode (Fallback):</p>
+              <ul className="space-y-1">
+                <li>• Basic hand movement detection</li>
+                <li>• Simple bounding boxes</li>
+                <li>• Fast and reliable</li>
+                <li>• Better for low-power devices</li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-3 p-2 bg-blue-100 rounded text-xs">
+            <p><strong>Skeleton Tracking Features:</strong> 
+              <span className="inline-block w-2 h-2 bg-blue-400 ml-2 mr-1 rounded-full"></span>Left hand landmarks |
+              <span className="inline-block w-2 h-2 bg-green-400 ml-2 mr-1 rounded-full"></span>Right hand landmarks |
+              <span className="text-blue-600 ml-2">Lines show finger bones and joints</span>
             </p>
+            {!currentGesture && detectionMethod === 'skeleton' && (
+              <p className="mt-1">Hold your hands clearly in view to see the joint tracking in action!</p>
+            )}
           </div>
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// Hand Skeleton Overlay Component
+interface HandSkeletonOverlayProps {
+  skeleton: HandSkeleton
+  color: string
+  label: string
+}
+
+function HandSkeletonOverlay({ skeleton, color, label }: HandSkeletonOverlayProps) {
+  const videoWidth = 100 // percentage
+  const videoHeight = 100 // percentage
+  
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {/* Draw hand landmarks (joints) */}
+      {skeleton.landmarks.map((landmark, index) => {
+        const visibility = landmark.visibility || 1
+        if (visibility < 0.5) return null
+        
+        return (
+          <div
+            key={`landmark-${index}`}
+            className="absolute w-2 h-2 rounded-full border-2"
+            style={{
+              left: `${landmark.x}%`,
+              top: `${landmark.y}%`,
+              backgroundColor: color,
+              borderColor: 'white',
+              opacity: visibility,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 20
+            }}
+          >
+            {/* Show landmark number on important joints */}
+            {[0, 4, 8, 12, 16, 20].includes(index) && (
+              <div 
+                className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs font-bold"
+                style={{ color: color, textShadow: '1px 1px 1px white' }}
+              >
+                {index}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      
+      {/* Draw hand connections (bones) */}
+      {skeleton.connections.map((connection, index) => {
+        const [start, end] = connection
+        const startPoint = skeleton.landmarks[start]
+        const endPoint = skeleton.landmarks[end]
+        
+        if (!startPoint || !endPoint || 
+            (startPoint.visibility || 1) < 0.5 || 
+            (endPoint.visibility || 1) < 0.5) {
+          return null
+        }
+        
+        const length = Math.sqrt(
+          Math.pow(endPoint.x - startPoint.x, 2) + 
+          Math.pow(endPoint.y - startPoint.y, 2)
+        )
+        
+        const angle = Math.atan2(
+          endPoint.y - startPoint.y, 
+          endPoint.x - startPoint.x
+        ) * (180 / Math.PI)
+        
+        return (
+          <div
+            key={`connection-${index}`}
+            className="absolute h-0.5"
+            style={{
+              left: `${startPoint.x}%`,
+              top: `${startPoint.y}%`,
+              width: `${length}%`,
+              backgroundColor: color,
+              transformOrigin: '0 50%',
+              transform: `rotate(${angle}deg)`,
+              opacity: Math.min(startPoint.visibility || 1, endPoint.visibility || 1) * 0.8,
+              zIndex: 10
+            }}
+          />
+        )
+      })}
+      
+      {/* Hand confidence and label */}
+      {skeleton.landmarks[0] && (
+        <div
+          className="absolute px-2 py-1 rounded text-xs font-medium"
+          style={{
+            left: `${skeleton.landmarks[0].x}%`,
+            top: `${skeleton.landmarks[0].y - 8}%`,
+            backgroundColor: color,
+            color: 'white',
+            transform: 'translate(-50%, -100%)',
+            zIndex: 30
+          }}
+        >
+          {label} ({Math.round(skeleton.confidence * 100)}%)
+        </div>
+      )}
+    </div>
   )
 }

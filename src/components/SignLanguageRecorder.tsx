@@ -1182,6 +1182,7 @@ Technical Details:
         </CardContent>
       </Card>
     )
+  }
 
   return (
     <Card className="w-full max-w-4xl mx-auto">

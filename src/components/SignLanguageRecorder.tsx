@@ -45,6 +45,111 @@ interface GestureFrame {
   }
 }
 
+// Hand Skeleton Overlay Component
+interface HandSkeletonOverlayProps {
+  skeleton: HandSkeleton
+  color: string
+  label: string
+}
+
+function HandSkeletonOverlay({ skeleton, color, label }: HandSkeletonOverlayProps) {
+  const videoWidth = 100 // percentage
+  const videoHeight = 100 // percentage
+  
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {/* Draw hand landmarks (joints) */}
+      {skeleton.landmarks.map((landmark, index) => {
+        const visibility = landmark.visibility || 1
+        if (visibility < 0.5) return null
+        
+        return (
+          <div
+            key={`landmark-${index}`}
+            className="absolute w-2 h-2 rounded-full border-2"
+            style={{
+              left: `${landmark.x}%`,
+              top: `${landmark.y}%`,
+              backgroundColor: color,
+              borderColor: 'white',
+              opacity: visibility,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 20
+            }}
+          >
+            {/* Show landmark number on important joints */}
+            {[0, 4, 8, 12, 16, 20].includes(index) && (
+              <div 
+                className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs font-bold"
+                style={{ color: color, textShadow: '1px 1px 1px white' }}
+              >
+                {index}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      
+      {/* Draw hand connections (bones) */}
+      {skeleton.connections.map((connection, index) => {
+        const [start, end] = connection
+        const startPoint = skeleton.landmarks[start]
+        const endPoint = skeleton.landmarks[end]
+        
+        if (!startPoint || !endPoint || 
+            (startPoint.visibility || 1) < 0.5 || 
+            (endPoint.visibility || 1) < 0.5) {
+          return null
+        }
+        
+        const length = Math.sqrt(
+          Math.pow(endPoint.x - startPoint.x, 2) + 
+          Math.pow(endPoint.y - startPoint.y, 2)
+        )
+        
+        const angle = Math.atan2(
+          endPoint.y - startPoint.y, 
+          endPoint.x - startPoint.x
+        ) * (180 / Math.PI)
+        
+        return (
+          <div
+            key={`connection-${index}`}
+            className="absolute h-0.5"
+            style={{
+              left: `${startPoint.x}%`,
+              top: `${startPoint.y}%`,
+              width: `${length}%`,
+              backgroundColor: color,
+              transformOrigin: '0 50%',
+              transform: `rotate(${angle}deg)`,
+              opacity: Math.min(startPoint.visibility || 1, endPoint.visibility || 1) * 0.8,
+              zIndex: 10
+            }}
+          />
+        )
+      })}
+      
+      {/* Hand confidence and label */}
+      {skeleton.landmarks[0] && (
+        <div
+          className="absolute px-2 py-1 rounded text-xs font-medium"
+          style={{
+            left: `${skeleton.landmarks[0].x}%`,
+            top: `${skeleton.landmarks[0].y - 8}%`,
+            backgroundColor: color,
+            color: 'white',
+            transform: 'translate(-50%, -100%)',
+            zIndex: 30
+          }}
+        >
+          {label} ({Math.round(skeleton.confidence * 100)}%)
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function SignLanguageRecorder({ 
   onVideoRecorded, 
   onClose, 
@@ -1550,110 +1655,5 @@ Technical Details:
         </div>
       </CardContent>
     </Card>
-  )
-}
-
-// Hand Skeleton Overlay Component
-interface HandSkeletonOverlayProps {
-  skeleton: HandSkeleton
-  color: string
-  label: string
-}
-
-function HandSkeletonOverlay({ skeleton, color, label }: HandSkeletonOverlayProps) {
-  const videoWidth = 100 // percentage
-  const videoHeight = 100 // percentage
-  
-  return (
-    <div className="absolute inset-0 pointer-events-none">
-      {/* Draw hand landmarks (joints) */}
-      {skeleton.landmarks.map((landmark, index) => {
-        const visibility = landmark.visibility || 1
-        if (visibility < 0.5) return null
-        
-        return (
-          <div
-            key={`landmark-${index}`}
-            className="absolute w-2 h-2 rounded-full border-2"
-            style={{
-              left: `${landmark.x}%`,
-              top: `${landmark.y}%`,
-              backgroundColor: color,
-              borderColor: 'white',
-              opacity: visibility,
-              transform: 'translate(-50%, -50%)',
-              zIndex: 20
-            }}
-          >
-            {/* Show landmark number on important joints */}
-            {[0, 4, 8, 12, 16, 20].includes(index) && (
-              <div 
-                className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs font-bold"
-                style={{ color: color, textShadow: '1px 1px 1px white' }}
-              >
-                {index}
-              </div>
-            )}
-          </div>
-        )
-      })}
-      
-      {/* Draw hand connections (bones) */}
-      {skeleton.connections.map((connection, index) => {
-        const [start, end] = connection
-        const startPoint = skeleton.landmarks[start]
-        const endPoint = skeleton.landmarks[end]
-        
-        if (!startPoint || !endPoint || 
-            (startPoint.visibility || 1) < 0.5 || 
-            (endPoint.visibility || 1) < 0.5) {
-          return null
-        }
-        
-        const length = Math.sqrt(
-          Math.pow(endPoint.x - startPoint.x, 2) + 
-          Math.pow(endPoint.y - startPoint.y, 2)
-        )
-        
-        const angle = Math.atan2(
-          endPoint.y - startPoint.y, 
-          endPoint.x - startPoint.x
-        ) * (180 / Math.PI)
-        
-        return (
-          <div
-            key={`connection-${index}`}
-            className="absolute h-0.5"
-            style={{
-              left: `${startPoint.x}%`,
-              top: `${startPoint.y}%`,
-              width: `${length}%`,
-              backgroundColor: color,
-              transformOrigin: '0 50%',
-              transform: `rotate(${angle}deg)`,
-              opacity: Math.min(startPoint.visibility || 1, endPoint.visibility || 1) * 0.8,
-              zIndex: 10
-            }}
-          />
-        )
-      })}
-      
-      {/* Hand confidence and label */}
-      {skeleton.landmarks[0] && (
-        <div
-          className="absolute px-2 py-1 rounded text-xs font-medium"
-          style={{
-            left: `${skeleton.landmarks[0].x}%`,
-            top: `${skeleton.landmarks[0].y - 8}%`,
-            backgroundColor: color,
-            color: 'white',
-            transform: 'translate(-50%, -100%)',
-            zIndex: 30
-          }}
-        >
-          {label} ({Math.round(skeleton.confidence * 100)}%)
-        </div>
-      )}
-    </div>
   )
 }

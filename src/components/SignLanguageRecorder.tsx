@@ -439,6 +439,8 @@ export function SignLanguageRecorder({
     
     return { type: 'unknown', confidence: 0.3 }
   }
+
+  const performSimpleDetection = () => {
     if (!videoRef.current || videoRef.current.videoWidth === 0) return
     
     try {
@@ -1075,7 +1077,6 @@ Technical Details:
         </CardContent>
       </Card>
     )
-  }
 
   return (
     <Card className="w-full max-w-4xl mx-auto">

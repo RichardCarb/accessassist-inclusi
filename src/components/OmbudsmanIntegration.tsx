@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ExternalLink, Search, Building, Phone, Mail, Globe } from '@phosphor-icons/react'
+import { ExternalLink, Search, Building, Phone, Mail, Globe, Clock } from '@phosphor-icons/react'
 import { ComplaintData } from './ComplaintTracker'
 import { toast } from 'sonner'
 

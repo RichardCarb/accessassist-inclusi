@@ -64,38 +64,40 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
   }, [])
 
   const initializeCamera = async () => {
+    setInitializationAttempts(prev => prev + 1)
+    setDebugInfo('Checking camera API support...')
+    
+    try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera API not supported').')
-      }
-tor.mediaDevices?.getUserMedia) {
         throw new Error('Camera API not supported')
-        video: { 
+      }
 
+      setDebugInfo('Creating camera constraints...')
       const constraints = {
+        video: { 
           facingMode: 'user',
           width: { ideal: 640, max: 1280 },
-        },{ ideal: 480, max: 720 },
-          facingMode: 'user',
-      }: 15, max: 30 }
-
-        audio: false // Simplified - no audio for now
+          height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 15, max: 30 }
+        },
+        audio: false // No audio needed for sign language
       }
 
+      setDebugInfo('Requesting camera stream...')
       console.log('Requesting stream with constraints:', constraints)
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       
-      if (videoRef.current) {uired:', stream.getTracks().length, 'tracks')
+      console.log('Stream acquired:', stream.getTracks().length, 'tracks')
       streamRef.current = stream
-        videoRef.current.srcObject = stream
+      
       if (videoRef.current) {
         console.log('Setting video source...')
         videoRef.current.srcObject = stream
         
-          setHasPermission(true)ndlers for different load events
+        const handleSuccess = () => {
+          setHasPermission(true)
           startHandTracking()
           console.log('Video ready!')
-        }
-
           toast.success('Camera ready!')
         }
 
@@ -138,9 +140,13 @@ tor.mediaDevices?.getUserMedia) {
           if (hasPermission === null && stream && stream.active) {
             console.log('Fallback: assuming camera is ready after timeout')
             handleSuccess()
+          }
+        }, 3000)
+      }
     } catch (error: any) {
       console.error('Camera initialization failed:', error)
       setHasPermission(false)
+      setError(error.message)
       
       let message = 'Camera access failed'
       if (error.name === 'NotAllowedError') {
@@ -151,6 +157,7 @@ tor.mediaDevices?.getUserMedia) {
         message = 'Camera is busy or unavailable'
       }
       
+      setDebugInfo(`Error: ${message}`)
       toast.error(message)
     }
   }
@@ -184,10 +191,6 @@ tor.mediaDevices?.getUserMedia) {
   const detectHands = () => {
     // This is a placeholder for actual hand detection
     // In a real implementation, this would use MediaPipe or similar
-    
-    // Simulate random hand detection for demo purposes
-    const shouldDetect = Math.random() > 0.7
-    
     
     // Simulate random hand detection for demo purposes
     const shouldDetect = Math.random() > 0.7

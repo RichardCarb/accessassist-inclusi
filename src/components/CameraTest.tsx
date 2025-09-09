@@ -319,7 +319,23 @@ export function CameraTest({ onClose }: CameraTestProps) {
         </TabsContent>
 
         <TabsContent value="tracking">
-          <HandTrackingCamera onClose={onClose} />
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Hand className="h-5 w-5" />
+                  New Sign2Text Hand Tracking
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  The hand tracking system has been completely rebuilt with the Sign2Text approach 
+                  for improved reliability and accuracy.
+                </p>
+                <HandTrackingCamera onClose={onClose} />
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

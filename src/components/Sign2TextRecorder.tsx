@@ -64,38 +64,38 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
   }, [])
 
   const initializeCamera = async () => {
-    try {
-      console.log('Starting camera initialization...')
-      
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera API not supported')
+        throw new Error('Camera API not supported').')
       }
+tor.mediaDevices?.getUserMedia) {
+        throw new Error('Camera API not supported')
+        video: { 
 
       const constraints = {
-        video: { 
-          width: { ideal: 640, max: 1280 },
-          height: { ideal: 480, max: 720 },
           facingMode: 'user',
-          frameRate: { ideal: 15, max: 30 }
-        },
+          width: { ideal: 640, max: 1280 },
+        },{ ideal: 480, max: 720 },
+          facingMode: 'user',
+      }: 15, max: 30 }
+
         audio: false // Simplified - no audio for now
       }
 
       console.log('Requesting stream with constraints:', constraints)
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       
-      console.log('Stream acquired:', stream.getTracks().length, 'tracks')
+      if (videoRef.current) {uired:', stream.getTracks().length, 'tracks')
       streamRef.current = stream
-
+        videoRef.current.srcObject = stream
       if (videoRef.current) {
         console.log('Setting video source...')
         videoRef.current.srcObject = stream
         
-        // Set up multiple fallback handlers for different load events
-        const handleSuccess = () => {
-          console.log('Video ready!')
-          setHasPermission(true)
+          setHasPermission(true)ndlers for different load events
           startHandTracking()
+          console.log('Video ready!')
+        }
+
           toast.success('Camera ready!')
         }
 
@@ -138,10 +138,6 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
           if (hasPermission === null && stream && stream.active) {
             console.log('Fallback: assuming camera is ready after timeout')
             handleSuccess()
-          }
-        }, 3000) // Reduced to 3 second timeout
-      }
-
     } catch (error: any) {
       console.error('Camera initialization failed:', error)
       setHasPermission(false)
@@ -188,6 +184,10 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
   const detectHands = () => {
     // This is a placeholder for actual hand detection
     // In a real implementation, this would use MediaPipe or similar
+    
+    // Simulate random hand detection for demo purposes
+    const shouldDetect = Math.random() > 0.7
+    
     
     // Simulate random hand detection for demo purposes
     const shouldDetect = Math.random() > 0.7

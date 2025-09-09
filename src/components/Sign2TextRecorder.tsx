@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { VideoCamera, Stop, Upload, Trash, Hand, Activity } from '@phosphor-icons/react'
+import { VideoCamera, Stop, Upload, Trash, Hand, Activity, Camera } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 
 interface Sign2TextRecorderProps {
@@ -42,6 +42,9 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
   const [detectedHands, setDetectedHands] = useState<DetectedHand[]>([])
   const [signPredictions, setSignPredictions] = useState<SignPrediction[]>([])
   const [transcript, setTranscript] = useState('')
+  const [initializationAttempts, setInitializationAttempts] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState('')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -62,31 +65,82 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
 
   const initializeCamera = async () => {
     try {
+      console.log('Starting camera initialization...')
+      
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera API not supported')
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints = {
         video: { 
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
           facingMode: 'user',
-          frameRate: { ideal: 30 }
+          frameRate: { ideal: 15, max: 30 }
         },
-        audio: true
-      })
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.onloadedmetadata = () => {
-          console.log('Video metadata loaded')
-          setHasPermission(true)
-          startHandTracking()
-        }
+        audio: false // Simplified - no audio for now
       }
 
+      console.log('Requesting stream with constraints:', constraints)
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      
+      console.log('Stream acquired:', stream.getTracks().length, 'tracks')
       streamRef.current = stream
-      toast.success('Camera initialized successfully')
+
+      if (videoRef.current) {
+        console.log('Setting video source...')
+        videoRef.current.srcObject = stream
+        
+        // Set up multiple fallback handlers for different load events
+        const handleSuccess = () => {
+          console.log('Video ready!')
+          setHasPermission(true)
+          startHandTracking()
+          toast.success('Camera ready!')
+        }
+
+        // Try multiple events to ensure we catch video ready state
+        const handleLoadedMetadata = () => {
+          console.log('Metadata loaded, video dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight)
+          if (videoRef.current && videoRef.current.videoWidth > 0) {
+            handleSuccess()
+          }
+        }
+
+        const handleCanPlay = () => {
+          console.log('Can play event fired')
+          handleSuccess()
+        }
+
+        const handleLoadedData = () => {
+          console.log('Loaded data event fired')
+          handleSuccess()
+        }
+
+        // Clean up any existing listeners
+        videoRef.current.onloadedmetadata = null
+        videoRef.current.oncanplay = null
+        videoRef.current.onloadeddata = null
+        
+        // Set up new listeners
+        videoRef.current.onloadedmetadata = handleLoadedMetadata
+        videoRef.current.oncanplay = handleCanPlay
+        videoRef.current.onloadeddata = handleLoadedData
+        
+        // Force play to trigger events
+        videoRef.current.play().catch(e => {
+          console.log('Play failed, but that\'s ok:', e.message)
+        })
+
+        // Fallback timeout to prevent infinite loading
+        setTimeout(() => {
+          console.log('Timeout check: hasPermission =', hasPermission, 'stream.active =', stream.active)
+          if (hasPermission === null && stream && stream.active) {
+            console.log('Fallback: assuming camera is ready after timeout')
+            handleSuccess()
+          }
+        }, 3000) // Reduced to 3 second timeout
+      }
 
     } catch (error: any) {
       console.error('Camera initialization failed:', error)
@@ -362,9 +416,58 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
     return (
       <Card className="w-full max-w-4xl mx-auto">
         <CardContent className="flex items-center justify-center py-12">
-          <div className="text-center space-y-3">
+          <div className="text-center space-y-4">
             <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
-            <p className="text-muted-foreground">Initializing camera...</p>
+            <div>
+              <p className="text-muted-foreground mb-2">Initializing camera...</p>
+              <p className="text-xs text-muted-foreground">
+                {debugInfo || `Attempt ${initializationAttempts}: Getting camera access...`}
+              </p>
+            </div>
+            
+            {/* Debug information */}
+            <div className="bg-muted/50 p-3 rounded text-xs space-y-1 max-w-sm mx-auto">
+              <p><strong>Debug Info:</strong></p>
+              <p>Browser: {navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Firefox') ? 'Firefox' : 'Other'}</p>
+              <p>HTTPS: {location.protocol === 'https:' ? 'Yes' : 'No'}</p>
+              <p>MediaDevices: {!!navigator.mediaDevices ? 'Available' : 'Not available'}</p>
+              <p>getUserMedia: {!!navigator.mediaDevices?.getUserMedia ? 'Available' : 'Not available'}</p>
+              <p>Attempts: {initializationAttempts}</p>
+              {error && <p className="text-destructive">Error: {error}</p>}
+            </div>
+            
+            <div className="pt-4 space-y-2">
+              {initializationAttempts > 2 && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    console.log('User manually proceeding')
+                    setHasPermission(true)
+                    startHandTracking()
+                    toast.success('Proceeding without full camera initialization')
+                  }}
+                >
+                  Continue Anyway
+                </Button>
+              )}
+              <div className="flex gap-2 justify-center">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={initializeCamera}
+                >
+                  Retry
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -376,22 +479,55 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
     return (
       <Card className="w-full max-w-4xl mx-auto">
         <CardHeader>
-          <CardTitle className="text-center text-destructive">Camera Access Required</CardTitle>
+          <CardTitle className="text-center text-destructive flex items-center justify-center gap-2">
+            <Camera className="h-5 w-5" />
+            Camera Access Required
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-center text-muted-foreground">
             Sign2Text needs camera access to detect and interpret your sign language.
           </p>
+          
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-red-800 mb-2">Error Details:</p>
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+          
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <p className="text-sm font-medium text-yellow-800 mb-2">To enable camera access:</p>
             <ul className="text-sm text-yellow-700 space-y-1">
               <li>1. Look for a camera icon in your browser's address bar</li>
               <li>2. Click it and select "Allow" for camera permissions</li>
-              <li>3. Refresh the page and try again</li>
+              <li>3. Refresh the page if needed</li>
+              <li>4. Make sure no other applications are using your camera</li>
             </ul>
           </div>
+          
+          {/* Debug information for troubleshooting */}
+          <div className="bg-muted/50 p-3 rounded text-xs space-y-1">
+            <p><strong>Troubleshooting Info:</strong></p>
+            <p>Browser: {navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Firefox') ? 'Firefox' : 'Other'}</p>
+            <p>Secure Context: {location.protocol === 'https:' || location.hostname === 'localhost' ? 'Yes' : 'No (camera requires HTTPS)'}</p>
+            <p>MediaDevices API: {!!navigator.mediaDevices ? 'Available' : 'Not available'}</p>
+            <p>getUserMedia API: {!!navigator.mediaDevices?.getUserMedia ? 'Available' : 'Not available'}</p>
+            <p>Initialization attempts: {initializationAttempts}</p>
+          </div>
+          
           <div className="flex justify-center gap-3">
             <Button onClick={initializeCamera}>Try Again</Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                console.log('Forcing continue without camera')
+                setHasPermission(true)
+                toast.info('Continuing in demo mode without camera')
+              }}
+            >
+              Demo Mode
+            </Button>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
           </div>
         </CardContent>

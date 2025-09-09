@@ -1,15 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { VideoCamera, Stop, Play, Trash, Upload, Hand, Activity } from '@phosphor-icons/react'
+import { VideoCamera, Stop, Upload, Trash, Hand, Activity } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 
 interface Sign2TextRecorderProps {
-  onVideoRecorded: (blob: Blob, transcript: string) => void
+  onTranscriptGenerated: (transcript: string) => void
   onClose: () => void
-  maxDurationMinutes?: number
 }
 
 interface HandLandmark {
@@ -30,42 +29,32 @@ interface SignPrediction {
   timestamp: number
 }
 
-type RecordingState = 'setup' | 'recording' | 'processing' | 'playback'
+type RecordingState = 'setup' | 'recording' | 'playback' | 'processing'
 
-export function Sign2TextRecorder({ 
-  onVideoRecorded, 
-  onClose, 
-  maxDurationMinutes = 5 
-}: Sign2TextRecorderProps) {
+const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGenerated, onClose }) => {
   const [currentState, setCurrentState] = useState<RecordingState>('setup')
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
+  const [isTracking, setIsTracking] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [transcript, setTranscript] = useState('')
-  
-  // Hand tracking state
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [trackingFps, setTrackingFps] = useState(0)
   const [detectedHands, setDetectedHands] = useState<DetectedHand[]>([])
   const [signPredictions, setSignPredictions] = useState<SignPrediction[]>([])
-  const [isTracking, setIsTracking] = useState(false)
-  const [trackingFps, setTrackingFps] = useState(0)
-  
+  const [transcript, setTranscript] = useState('')
+
   const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
   const trackingLoopRef = useRef<number | null>(null)
-  const lastFrameTimeRef = useRef<number>(0)
-  
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const lastFrameTimeRef = useRef(performance.now())
+  const maxDurationMinutes = 5
   const maxDurationSeconds = maxDurationMinutes * 60
 
   // Initialize camera on mount
   useEffect(() => {
     initializeCamera()
-    
     return () => {
       cleanup()
     }
@@ -73,8 +62,6 @@ export function Sign2TextRecorder({
 
   const initializeCamera = async () => {
     try {
-      console.log('Initializing camera for Sign2Text...')
-      
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera API not supported')
       }
@@ -204,54 +191,18 @@ export function Sign2TextRecorder({
       cancelAnimationFrame(trackingLoopRef.current)
       trackingLoopRef.current = null
     }
-    setDetectedHands([])
   }
 
-  const startRecording = async () => {
-    if (!streamRef.current) {
-      toast.error('Camera not available')
-      return
-    }
-
+  const startRecording = () => {
+    if (!streamRef.current) return
+    
     try {
-      chunksRef.current = []
-      setSignPredictions([])
-      
-      const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: 'video/webm;codecs=vp9'
-      })
-      
-      mediaRecorderRef.current = mediaRecorder
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data)
-        }
-      }
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' })
-        setRecordedBlob(blob)
-        setIsRecording(false)
-        setCurrentState('playback')
-        
-        // Set video to show recorded content
-        if (videoRef.current) {
-          videoRef.current.srcObject = null
-          videoRef.current.src = URL.createObjectURL(blob)
-          videoRef.current.controls = true
-          videoRef.current.muted = false
-        }
-        
-        toast.success('Recording completed!')
-      }
-
-      mediaRecorder.start(100)
       setIsRecording(true)
       setCurrentState('recording')
+      setSignPredictions([])
       setRecordingTime(0)
       
-      // Start recording timer
+      // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1
@@ -263,42 +214,46 @@ export function Sign2TextRecorder({
       }, 1000)
       
       toast.success('Recording started')
-
     } catch (error) {
-      console.error('Recording error:', error)
+      console.error('Failed to start recording:', error)
       toast.error('Failed to start recording')
     }
   }
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop()
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-        timerRef.current = null
-      }
+    setIsRecording(false)
+    setCurrentState('playback')
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
     }
+    
+    toast.success('Recording stopped')
+  }
+
+  const retakeVideo = () => {
+    setCurrentState('setup')
+    setSignPredictions([])
+    setTranscript('')
+    setRecordingTime(0)
   }
 
   const processVideo = async () => {
-    if (!recordedBlob) return
-    
     setIsProcessing(true)
     setCurrentState('processing')
     
     try {
-      // Simulate processing time
+      // Simulate processing delay
       await new Promise(resolve => setTimeout(resolve, 2000))
       
-      // Generate transcript from collected sign predictions
-      const transcript = generateTranscriptFromSigns(signPredictions, recordingTime)
-      setTranscript(transcript)
+      const generatedTranscript = generateTranscriptFromSigns(signPredictions)
+      setTranscript(generatedTranscript)
       
-      toast.success('Video processed successfully!')
+      // Pass transcript to parent
+      onTranscriptGenerated(generatedTranscript)
       
-      // Pass the result back
-      onVideoRecorded(recordedBlob, transcript)
-      
+      toast.success('Video processed successfully')
     } catch (error) {
       console.error('Processing error:', error)
       toast.error('Failed to process video')
@@ -307,136 +262,110 @@ export function Sign2TextRecorder({
     }
   }
 
-  const generateTranscriptFromSigns = (predictions: SignPrediction[], duration: number): string => {
+  const generateTranscriptFromSigns = (predictions: SignPrediction[]): string => {
     if (predictions.length === 0) {
-      return 'I would like to make a complaint. (No specific signs detected during recording)'
+      return "No signs were detected during the recording. Please try again with clearer sign language movements."
     }
-    
-    // Group consecutive similar signs
-    const groupedSigns: { sign: string, count: number, avgConfidence: number }[] = []
-    let currentSign = ''
-    let currentCount = 0
-    let currentConfidenceSum = 0
-    
-    for (const prediction of predictions) {
+
+    // Group consecutive signs and calculate confidence
+    const groupedSigns: { sign: string, count: number, confidence: number }[] = []
+    let currentSign = predictions[0].sign
+    let currentCount = 1
+    let currentConfidenceSum = predictions[0].confidence
+
+    for (let i = 1; i < predictions.length; i++) {
+      const prediction = predictions[i]
       if (prediction.sign === currentSign) {
         currentCount++
         currentConfidenceSum += prediction.confidence
       } else {
-        if (currentSign) {
-          groupedSigns.push({
-            sign: currentSign,
-            count: currentCount,
-            avgConfidence: currentConfidenceSum / currentCount
-          })
-        }
+        groupedSigns.push({
+          sign: currentSign,
+          count: currentCount,
+          confidence: currentConfidenceSum / currentCount
+        })
         currentSign = prediction.sign
         currentCount = 1
         currentConfidenceSum = prediction.confidence
       }
     }
-    
+
     // Add the last sign
-    if (currentSign) {
+    if (currentCount > 0) {
       groupedSigns.push({
         sign: currentSign,
         count: currentCount,
-        avgConfidence: currentConfidenceSum / currentCount
+        confidence: currentConfidenceSum / currentCount
       })
     }
-    
-    // Filter signs with reasonable confidence and frequency
-    const significantSigns = groupedSigns
-      .filter(s => s.avgConfidence > 0.6 && s.count >= 2)
-      .sort((a, b) => b.count - a.count)
-    
-    // Generate natural language from signs
-    let transcript = 'I would like to make a complaint'
-    
-    if (significantSigns.some(s => s.sign === 'HELP')) {
-      transcript += ' and I need help resolving this issue'
+
+    // Generate natural language transcript
+    const primarySigns = groupedSigns.filter(s => s.confidence > 0.7 && s.count >= 2)
+    let transcript = "I am signing to make a complaint. "
+
+    if (primarySigns.some(s => s.sign === 'PROBLEM')) {
+      transcript += "I have a problem "
     }
-    
-    if (significantSigns.some(s => s.sign === 'PROBLEM')) {
-      transcript += '. This is a serious problem'
+    if (primarySigns.some(s => s.sign === 'HELP')) {
+      transcript += "and I need help "
     }
-    
-    if (significantSigns.some(s => s.sign === 'THANK_YOU')) {
-      transcript += '. Thank you for your assistance'
+    if (primarySigns.some(s => s.sign === 'PLEASE')) {
+      transcript += "Please "
     }
-    
-    transcript += '.'
-    
+    if (primarySigns.some(s => s.sign === 'THANK_YOU')) {
+      transcript += "Thank you "
+    }
+
+    transcript += "for your assistance."
+
     // Add technical details
-    transcript += `\n\nSign Detection Summary:\n`
-    transcript += `- Recording Duration: ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}\n`
-    transcript += `- Total Sign Predictions: ${predictions.length}\n`
-    transcript += `- Significant Signs Detected: ${significantSigns.length}\n`
-    
-    if (significantSigns.length > 0) {
-      transcript += `- Detected Signs: ${significantSigns.map(s => `${s.sign} (${s.count}x, ${Math.round(s.avgConfidence * 100)}%)`).join(', ')}\n`
+    transcript += `\n\nSign Detection Summary:
+- Total signs detected: ${predictions.length}
+- Unique signs: ${groupedSigns.length}
+- Average confidence: ${Math.round(predictions.reduce((sum, p) => sum + p.confidence, 0) / predictions.length * 100)}%`
+
+    if (primarySigns.length > 0) {
+      transcript += `\n- Primary signs detected: ${primarySigns.map(s => s.sign.replace('_', ' ')).join(', ')}`
     }
-    
+
     return transcript
   }
 
-  const retakeVideo = () => {
-    setRecordedBlob(null)
-    setRecordingTime(0)
-    setCurrentState('setup')
-    setSignPredictions([])
-    setTranscript('')
-    
-    // Restore live video feed
-    if (videoRef.current && streamRef.current) {
-      if (videoRef.current.src) {
-        URL.revokeObjectURL(videoRef.current.src)
-      }
-      videoRef.current.src = ''
-      videoRef.current.controls = false
-      videoRef.current.muted = true
-      videoRef.current.srcObject = streamRef.current
-    }
-  }
-
   const cleanup = () => {
-    console.log('Cleaning up Sign2Text recorder...')
-    
     stopHandTracking()
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
-    
+    setIsRecording(false)
+    setRecordingTime(0)
+
     if (timerRef.current) {
       clearInterval(timerRef.current)
       timerRef.current = null
     }
-    
-    if (videoRef.current?.src) {
-      URL.revokeObjectURL(videoRef.current.src)
+
+    if (videoRef.current && streamRef.current) {
+      const tracks = streamRef.current.getTracks()
+      tracks.forEach(track => track.stop())
+      videoRef.current.srcObject = null
+      streamRef.current = null
     }
+
+    console.log('Cleaning up Sign2Text recorder...')
   }
 
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Loading state
+  // Permission loading state
   if (hasPermission === null) {
     return (
       <Card className="w-full max-w-4xl mx-auto">
-        <CardContent className="p-8 text-center">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+        <CardContent className="flex items-center justify-center py-12">
+          <div className="text-center space-y-3">
+            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
+            <p className="text-muted-foreground">Initializing camera...</p>
           </div>
-          <h3 className="font-semibold mb-2">Setting up Sign2Text System</h3>
-          <p className="text-muted-foreground">
-            Initializing camera and hand tracking for UK Sign Language recognition...
-          </p>
         </CardContent>
       </Card>
     )
@@ -447,27 +376,21 @@ export function Sign2TextRecorder({
     return (
       <Card className="w-full max-w-4xl mx-auto">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-red-600">
-            <VideoCamera className="h-5 w-5" />
-            Camera Access Required
-          </CardTitle>
+          <CardTitle className="text-center text-destructive">Camera Access Required</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            Sign2Text requires camera access to record and analyze your UK Sign Language input.
+          <p className="text-center text-muted-foreground">
+            Sign2Text needs camera access to detect and interpret your sign language.
           </p>
-          
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm font-medium text-blue-800 mb-2">To enable camera access:</p>
-            <ul className="text-sm text-blue-700 space-y-1">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-sm font-medium text-yellow-800 mb-2">To enable camera access:</p>
+            <ul className="text-sm text-yellow-700 space-y-1">
               <li>1. Look for a camera icon in your browser's address bar</li>
-              <li>2. Click it and select "Allow" camera access</li>
-              <li>3. Refresh the page if needed</li>
-              <li>4. Ensure no other apps are using your camera</li>
+              <li>2. Click it and select "Allow" for camera permissions</li>
+              <li>3. Refresh the page and try again</li>
             </ul>
           </div>
-          
-          <div className="flex gap-2 justify-center">
+          <div className="flex justify-center gap-3">
             <Button onClick={initializeCamera}>Try Again</Button>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
           </div>
@@ -480,16 +403,14 @@ export function Sign2TextRecorder({
   if (currentState === 'processing') {
     return (
       <Card className="w-full max-w-4xl mx-auto">
-        <CardContent className="p-8 text-center">
-          <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <div className="animate-spin h-8 w-8 border-2 border-purple-600 border-t-transparent rounded-full" />
-          </div>
+        <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
+          <div className="animate-spin w-12 h-12 border-2 border-primary border-t-transparent rounded-full" />
           <h3 className="font-semibold mb-2">Processing Sign Language Video</h3>
-          <p className="text-muted-foreground mb-4">
-            Analyzing {signPredictions.length} sign predictions to generate your transcript...
+          <p className="text-muted-foreground text-center">
+            Analyzing {signPredictions.length} detected signs...
           </p>
-          <Progress value={75} className="w-64 mx-auto" />
-          <p className="text-sm text-muted-foreground mt-2">
+          <Progress value={66} className="w-64" />
+          <p className="text-xs text-muted-foreground">
             This may take a few moments
           </p>
         </CardContent>
@@ -497,19 +418,17 @@ export function Sign2TextRecorder({
     )
   }
 
-  // Main recorder interface
   return (
-    <Card className="w-full max-w-6xl mx-auto">
+    <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Hand className="h-5 w-5" />
-            Sign2Text - UK Sign Language Recorder
+            <VideoCamera className="h-5 w-5" />
+            Sign2Text - UK Sign Language Recognition
           </div>
           <div className="flex items-center gap-2">
             {isTracking && (
-              <Badge variant="default" className="animate-pulse">
-                <Activity className="h-3 w-3 mr-1" />
+              <Badge variant="secondary">
                 Tracking ({trackingFps} fps)
               </Badge>
             )}
@@ -740,3 +659,5 @@ export function Sign2TextRecorder({
     </Card>
   )
 }
+
+export default Sign2TextRecorder

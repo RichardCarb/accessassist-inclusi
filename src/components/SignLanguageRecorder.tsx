@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { VideoCamera } from '@phosphor-icons/react'
-import { Sign2TextRecorder } from './Sign2TextRecorder'
+import Sign2TextRecorder from './Sign2TextRecorder'
 import { SignLanguageConfirmation } from './SignLanguageConfirmation'
 import { toast } from 'sonner'
 

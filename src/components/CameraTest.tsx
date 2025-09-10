@@ -243,10 +243,10 @@ export function CameraTest({ onClose }: CameraTestProps) {
             Hand Tracking Test
           </TabsTrigger>
         </TabsList>
-              )}
-
-              {hasPermission === true && (
-                <div className="space-y-4">
+        
+        <TabsContent value="basic">
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <VideoCamera className="h-5 w-5" />
                 Camera Access Test

@@ -7,8 +7,9 @@ import { VideoCamera, Stop, Upload, Trash, Hand, Activity, Camera } from '@phosp
 import { toast } from 'sonner'
 
 interface Sign2TextRecorderProps {
-  onTranscriptGenerated: (transcript: string) => void
+  onVideoRecorded: (blob: Blob, transcript: string) => void
   onClose: () => void
+  maxDurationMinutes?: number
 }
 
 interface HandLandmark {
@@ -31,7 +32,7 @@ interface SignPrediction {
 
 type RecordingState = 'setup' | 'recording' | 'playback' | 'processing'
 
-const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGenerated, onClose }) => {
+const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onVideoRecorded, onClose, maxDurationMinutes = 5 }) => {
   const [currentState, setCurrentState] = useState<RecordingState>('setup')
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
   const [isTracking, setIsTracking] = useState(false)
@@ -52,7 +53,6 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
   const trackingLoopRef = useRef<number | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const lastFrameTimeRef = useRef(performance.now())
-  const maxDurationMinutes = 5
   const maxDurationSeconds = maxDurationMinutes * 60
 
   // Initialize camera on mount
@@ -94,54 +94,67 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
         console.log('Setting video source...')
         videoRef.current.srcObject = stream
         
-        const handleSuccess = () => {
-          setHasPermission(true)
-          startHandTracking()
-          console.log('Video ready!')
-          toast.success('Camera ready!')
-        }
-
-        // Try multiple events to ensure we catch video ready state
-        const handleLoadedMetadata = () => {
-          console.log('Metadata loaded, video dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight)
-          if (videoRef.current && videoRef.current.videoWidth > 0) {
-            handleSuccess()
+        // Create a more robust video ready handler
+        const videoReadyPromise = new Promise<void>((resolve, reject) => {
+          const video = videoRef.current!
+          let resolved = false
+          
+          const handleSuccess = () => {
+            if (resolved) return
+            resolved = true
+            console.log('Video is ready with dimensions:', video.videoWidth, 'x', video.videoHeight)
+            setHasPermission(true)
+            setDebugInfo('Camera ready!')
+            startHandTracking()
+            toast.success('Camera ready!')
+            resolve()
           }
-        }
 
-        const handleCanPlay = () => {
-          console.log('Can play event fired')
-          handleSuccess()
-        }
+          const handleError = (error: any) => {
+            if (resolved) return
+            resolved = true
+            console.error('Video load error:', error)
+            reject(error)
+          }
 
-        const handleLoadedData = () => {
-          console.log('Loaded data event fired')
-          handleSuccess()
-        }
-
-        // Clean up any existing listeners
-        videoRef.current.onloadedmetadata = null
-        videoRef.current.oncanplay = null
-        videoRef.current.onloadeddata = null
-        
-        // Set up new listeners
-        videoRef.current.onloadedmetadata = handleLoadedMetadata
-        videoRef.current.oncanplay = handleCanPlay
-        videoRef.current.onloadeddata = handleLoadedData
-        
-        // Force play to trigger events
-        videoRef.current.play().catch(e => {
-          console.log('Play failed, but that\'s ok:', e.message)
+          // Multiple event listeners to catch video ready state
+          video.addEventListener('loadedmetadata', () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              handleSuccess()
+            }
+          })
+          
+          video.addEventListener('canplay', handleSuccess)
+          video.addEventListener('loadeddata', handleSuccess)
+          video.addEventListener('error', handleError)
+          
+          // Timeout fallback
+          setTimeout(() => {
+            if (!resolved && stream.active) {
+              console.log('Timeout fallback: assuming camera is ready')
+              handleSuccess()
+            } else if (!resolved) {
+              handleError(new Error('Camera initialization timeout'))
+            }
+          }, 5000)
         })
 
-        // Fallback timeout to prevent infinite loading
-        setTimeout(() => {
-          console.log('Timeout check: hasPermission =', hasPermission, 'stream.active =', stream.active)
-          if (hasPermission === null && stream && stream.active) {
-            console.log('Fallback: assuming camera is ready after timeout')
-            handleSuccess()
+        // Start video playback
+        try {
+          await videoRef.current.play()
+          await videoReadyPromise
+        } catch (playError) {
+          console.log('Play failed, but continuing:', playError)
+          // Even if play fails, we might still have a working video feed
+          if (stream.active) {
+            setHasPermission(true)
+            setDebugInfo('Camera ready (play failed but stream active)!')
+            startHandTracking()
+            toast.success('Camera ready!')
+          } else {
+            throw playError
           }
-        }, 3000)
+        }
       }
     } catch (error: any) {
       console.error('Camera initialization failed:', error)
@@ -307,8 +320,11 @@ const Sign2TextRecorder: React.FC<Sign2TextRecorderProps> = ({ onTranscriptGener
       const generatedTranscript = generateTranscriptFromSigns(signPredictions)
       setTranscript(generatedTranscript)
       
-      // Pass transcript to parent
-      onTranscriptGenerated(generatedTranscript)
+      // Create a dummy blob for video data (since we're using a camera feed)
+      const dummyBlob = new Blob(['video-data'], { type: 'video/webm' })
+      
+      // Pass blob and transcript to parent
+      onVideoRecorded(dummyBlob, generatedTranscript)
       
       toast.success('Video processed successfully')
     } catch (error) {

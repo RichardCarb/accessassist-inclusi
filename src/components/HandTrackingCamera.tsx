@@ -50,9 +50,9 @@ export function HandTrackingCamera({ onClose }: HandTrackingCameraProps) {
           
           <div className="flex gap-3 justify-center">
             <Sign2TextRecorder 
-              onTranscriptGenerated={(transcript) => {
-                console.log('Transcript generated:', transcript)
-                // Here you would typically pass the transcript to ComplaintIntake
+              onVideoRecorded={(blob, transcript) => {
+                console.log('Video recorded with transcript:', transcript)
+                // Here you would typically pass the blob and transcript to ComplaintIntake
                 onClose()
               }}
               onClose={onClose}

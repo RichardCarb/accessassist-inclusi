@@ -39,11 +39,7 @@ export function CameraTest({ onClose }: CameraTestProps) {
       setVideoReady(false)
       
       console.log('Testing camera access...')
-      console.log('Navigator.mediaDevices:', !!navigator.mediaDevices)
-      console.log('getUserMedia:', !!navigator.mediaDevices?.getUserMedia)
-      console.log('Location:', location.protocol, location.hostname)
-      console.log('Is HTTPS or localhost:', location.protocol === 'https:' || location.hostname === 'localhost')
-
+      
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API not supported in this browser')
       }
@@ -56,140 +52,70 @@ export function CameraTest({ onClose }: CameraTestProps) {
 
       const constraints = {
         video: { 
-          width: { ideal: 640, max: 1280 },
-          height: { ideal: 480, max: 720 },
-          facingMode: 'user',
-          frameRate: { ideal: 15, max: 30 }
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user'
         },
         audio: false
       }
 
-      console.log('Requesting stream with constraints:', constraints)
+      console.log('Requesting camera stream...')
       const testStream = await navigator.mediaDevices.getUserMedia(constraints)
-
-      console.log('Stream obtained:', testStream)
-      console.log('Video tracks:', testStream.getVideoTracks())
-      
-      const videoTrack = testStream.getVideoTracks()[0]
-      if (videoTrack) {
-        console.log('Video track settings:', videoTrack.getSettings())
-        console.log('Video track state:', videoTrack.readyState)
-      }
-
-      if (videoRef.current) {
-        const video = videoRef.current
-        let timeoutId: NodeJS.Timeout
-        
-        // Set up event handlers with timeout fallback
-        const handleVideoReady = () => {
-          console.log('Video ready - clearing timeout and setting state')
-          if (timeoutId) clearTimeout(timeoutId)
-          setVideoReady(true)
-          setIsLoading(false)
-          
-          // Try to play the video  
-          video.play().then(() => {
-            console.log('Video playing successfully')
-          }).catch(playError => {
-            console.warn('Video play failed, but video is ready:', playError)
-          })
-        }
-
-        const handleLoadedMetadata = () => {
-          console.log('Video metadata loaded')
-          console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight)
-          
-          if (video.videoWidth > 0 && video.videoHeight > 0) {
-            handleVideoReady()
-          }
-        }
-
-        const handleCanPlay = () => {
-          console.log('Video can play')
-          // Fallback if loadedmetadata doesn't fire
-          if (!videoReady) {
-            handleVideoReady()
-          }
-        }
-
-        const handleError = (e: Event) => {
-          console.error('Video element error:', e)
-          if (timeoutId) clearTimeout(timeoutId)
-          setError('Video display error')
-          setIsLoading(false)
-        }
-
-        // Clean up previous handlers
-        video.removeEventListener('loadedmetadata', handleLoadedMetadata)
-        video.removeEventListener('error', handleError)
-        video.removeEventListener('canplay', handleCanPlay)
-        
-        // Add new handlers
-        video.addEventListener('loadedmetadata', handleLoadedMetadata)
-        video.addEventListener('error', handleError)
-        video.addEventListener('canplay', handleCanPlay)
-        
-        // Timeout fallback - if video doesn't load within 1.5 seconds, show manual play
-        timeoutId = setTimeout(() => {
-          console.log('Video load timeout - showing manual controls')
-          setIsLoading(false)
-          if (!videoReady) {
-            toast.info('Camera connected! Click the button to start video.')
-          }
-        }, 1500)
-        
-        // Reset and set the stream with force refresh
-        video.srcObject = null
-        // Small delay to ensure cleanup
-        await new Promise(resolve => setTimeout(resolve, 100))
-        video.srcObject = testStream
-        
-        // Don't call load() with srcObject - it interferes with MediaStream
-        // Force play instead
-        try {
-          await video.play()
-          console.log('Video play completed')
-        } catch (playErr) {
-          console.warn('Video play failed but continuing:', playErr)
-          // Try to play anyway after a delay
-          setTimeout(() => {
-            video.play().catch(e => console.warn('Retry play failed:', e))
-          }, 500)
-        }
-        
-        // Manual trigger if metadata is already loaded
-        if (video.readyState >= 1) { // HAVE_METADATA
-          console.log('Video already has metadata, triggering handler')
-          handleLoadedMetadata()
-        }
-        
-        // Additional fallback - check video periodically
-        const checkVideo = () => {
-          if (video.videoWidth > 0 && video.videoHeight > 0 && !videoReady) {
-            console.log('Manual video check - video has dimensions, setting ready')
-            handleVideoReady()
-          }
-        }
-        
-        // Check immediately and after delays
-        setTimeout(checkVideo, 500)
-        setTimeout(checkVideo, 1000)
-        setTimeout(checkVideo, 2000)
-      } else {
-        // No video element - still mark as successful since we got the stream
-        console.log('No video element, but stream obtained successfully')
-        setTimeout(() => {
-          setVideoReady(true)
-          setIsLoading(false)
-        }, 1000)
-      }
+      console.log('Stream obtained successfully')
 
       setStream(testStream)
       setHasPermission(true)
-      console.log('Camera test successful')
+
+      // Handle video element setup
+      if (videoRef.current) {
+        const video = videoRef.current
+        
+        // Simple event handler
+        const handleVideoStart = () => {
+          console.log('Video started successfully')
+          setVideoReady(true)
+          setIsLoading(false)
+          toast.success('Camera is working!')
+        }
+
+        // Set up event listeners
+        video.addEventListener('playing', handleVideoStart)
+        video.addEventListener('loadedmetadata', () => {
+          console.log('Video metadata loaded')
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setVideoReady(true)
+            setIsLoading(false)
+          }
+        })
+
+        // Assign stream and play
+        video.srcObject = testStream
+        
+        try {
+          await video.play()
+          console.log('Video play initiated')
+        } catch (playErr) {
+          console.log('Autoplay blocked, user interaction required')
+          setIsLoading(false)
+          toast.info('Click the video area to start')
+        }
+
+        // Fallback timeout
+        setTimeout(() => {
+          if (!videoReady) {
+            console.log('Video not ready after 2 seconds, forcing ready state')
+            setIsLoading(false)
+            setVideoReady(true)
+          }
+        }, 2000)
+      } else {
+        console.log('No video element, but stream obtained')
+        setIsLoading(false)
+        setVideoReady(true)
+      }
       
     } catch (err: any) {
-      console.error('Camera test failed:', err)
+      console.error('Camera access failed:', err)
       setHasPermission(false)
       setIsLoading(false)
       
@@ -273,41 +199,35 @@ export function CameraTest({ onClose }: CameraTestProps) {
                       autoPlay
                       playsInline
                       muted
-                      controls={false}
                       className="w-full h-full object-cover"
                       style={{ backgroundColor: '#000', minHeight: '240px' }}
-                      onLoadStart={() => console.log('Video load started')}
-                      onLoadedData={() => console.log('Video data loaded')}
-                      onPlaying={() => {
-                        console.log('Video is playing')
-                        setVideoReady(true)
-                        setIsLoading(false)
+                      onClick={() => {
+                        console.log('Video clicked - attempting play')
+                        if (videoRef.current) {
+                          videoRef.current.play().then(() => {
+                            console.log('Play successful after click')
+                            setVideoReady(true)
+                            setIsLoading(false)
+                          }).catch(e => console.warn('Play failed after click:', e))
+                        }
                       }}
                     />
                     
-                    {!videoReady && (
+                    {(!videoReady || isLoading) && (
                       <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
                         <div className="text-center">
-                          <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2" />
-                          <p className="text-sm">Loading video feed...</p>
-                          <p className="text-xs mt-1 text-gray-300">Camera light is on, video should appear shortly</p>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="mt-3 text-black bg-white"
-                            onClick={() => {
-                              console.log('Manual play button clicked')
-                              if (videoRef.current) {
-                                videoRef.current.play().then(() => {
-                                  console.log('Manual play successful')
-                                  setVideoReady(true)
-                                  setIsLoading(false)
-                                }).catch(e => console.warn('Manual play failed:', e))
-                              }
-                            }}
-                          >
-                            Click to Start Video
-                          </Button>
+                          {isLoading ? (
+                            <>
+                              <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2" />
+                              <p className="text-sm">Initializing camera...</p>
+                            </>
+                          ) : (
+                            <>
+                              <VideoCamera className="h-8 w-8 mx-auto mb-2" />
+                              <p className="text-sm">Click to start video</p>
+                            </>
+                          )}
+                          <p className="text-xs mt-1 text-gray-300">Camera connected, loading video feed</p>
                         </div>
                       </div>
                     )}
@@ -317,7 +237,9 @@ export function CameraTest({ onClose }: CameraTestProps) {
                     <p>
                       {videoReady 
                         ? "✓ Camera is working properly! You should see yourself in the video above."
-                        : "Camera connected, loading video feed..."
+                        : isLoading 
+                        ? "Initializing camera stream..." 
+                        : "Click the video area to start"
                       }
                     </p>
                     {videoReady && stream && (
@@ -325,17 +247,6 @@ export function CameraTest({ onClose }: CameraTestProps) {
                         Video tracks: {stream.getVideoTracks().length} | 
                         Status: {stream.getVideoTracks()[0]?.readyState || 'unknown'}
                       </p>
-                    )}
-                    {videoReady && videoRef.current && videoRef.current.paused && (
-                      <div className="mt-2">
-                        <Button 
-                          size="sm" 
-                          onClick={() => videoRef.current?.play()}
-                          className="text-xs"
-                        >
-                          Click to Start Video
-                        </Button>
-                      </div>
                     )}
                   </div>
 

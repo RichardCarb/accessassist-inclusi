@@ -77,35 +77,46 @@ export function CameraTest({ onClose }: CameraTestProps) {
       }
 
       if (videoRef.current) {
-        // Wait for video element to be ready
         const video = videoRef.current
+        let timeoutId: NodeJS.Timeout
         
-        // Set up event handlers
+        // Set up event handlers with timeout fallback
+        const handleVideoReady = () => {
+          console.log('Video ready - clearing timeout and setting state')
+          if (timeoutId) clearTimeout(timeoutId)
+          setVideoReady(true)
+          setIsLoading(false)
+          
+          // Try to play the video  
+          video.play().then(() => {
+            console.log('Video playing successfully')
+          }).catch(playError => {
+            console.warn('Video play failed, but video is ready:', playError)
+          })
+        }
+
         const handleLoadedMetadata = () => {
           console.log('Video metadata loaded')
           console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight)
           
           if (video.videoWidth > 0 && video.videoHeight > 0) {
-            setVideoReady(true)
-            setIsLoading(false)
-            
-            // Try to play the video  
-            video.play().then(() => {
-              console.log('Video playing successfully')
-            }).catch(playError => {
-              console.warn('Video play failed, but video is ready:', playError)
-            })
+            handleVideoReady()
+          }
+        }
+
+        const handleCanPlay = () => {
+          console.log('Video can play')
+          // Fallback if loadedmetadata doesn't fire
+          if (!videoReady) {
+            handleVideoReady()
           }
         }
 
         const handleError = (e: Event) => {
           console.error('Video element error:', e)
+          if (timeoutId) clearTimeout(timeoutId)
           setError('Video display error')
           setIsLoading(false)
-        }
-
-        const handleCanPlay = () => {
-          console.log('Video can play')
         }
 
         // Clean up previous handlers
@@ -118,6 +129,19 @@ export function CameraTest({ onClose }: CameraTestProps) {
         video.addEventListener('error', handleError)
         video.addEventListener('canplay', handleCanPlay)
         
+        // Timeout fallback - if video doesn't load within 5 seconds, assume it's working
+        timeoutId = setTimeout(() => {
+          console.log('Video load timeout - assuming success')
+          if (testStream.getVideoTracks().length > 0 && testStream.getVideoTracks()[0].readyState === 'live') {
+            setVideoReady(true)
+            setIsLoading(false)
+            toast.success('Camera connected! Video may take a moment to appear.')
+          } else {
+            setError('Camera timeout - video stream may not be working')
+            setIsLoading(false)
+          }
+        }, 5000)
+        
         // Reset and set the stream
         video.srcObject = null
         video.srcObject = testStream
@@ -126,6 +150,13 @@ export function CameraTest({ onClose }: CameraTestProps) {
         if (video.readyState >= 1) { // HAVE_METADATA
           handleLoadedMetadata()
         }
+      } else {
+        // No video element - still mark as successful since we got the stream
+        console.log('No video element, but stream obtained successfully')
+        setTimeout(() => {
+          setVideoReady(true)
+          setIsLoading(false)
+        }, 1000)
       }
 
       setStream(testStream)

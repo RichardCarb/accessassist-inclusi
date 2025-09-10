@@ -258,7 +258,7 @@ export function CameraTest({ onClose }: CameraTestProps) {
                       style={{ backgroundColor: '#000', minHeight: '240px' }}
                     />
                     
-                        </div>
+                    {!videoReady && (
                       <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
                         <div className="text-center">
                           <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2" />

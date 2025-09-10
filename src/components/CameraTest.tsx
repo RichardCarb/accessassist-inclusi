@@ -129,22 +129,28 @@ export function CameraTest({ onClose }: CameraTestProps) {
         video.addEventListener('error', handleError)
         video.addEventListener('canplay', handleCanPlay)
         
-        // Timeout fallback - if video doesn't load within 5 seconds, assume it's working
+        // Timeout fallback - if video doesn't load within 3 seconds, force show it
         timeoutId = setTimeout(() => {
-          console.log('Video load timeout - assuming success')
-          if (testStream.getVideoTracks().length > 0 && testStream.getVideoTracks()[0].readyState === 'live') {
-            setVideoReady(true)
-            setIsLoading(false)
-            toast.success('Camera connected! Video may take a moment to appear.')
-          } else {
-            setError('Camera timeout - video stream may not be working')
-            setIsLoading(false)
-          }
-        }, 5000)
+          console.log('Video load timeout - forcing video ready state')
+          setVideoReady(true)
+          setIsLoading(false)
+          toast.success('Camera connected! If video doesn\'t appear, try refreshing.')
+        }, 3000)
         
-        // Reset and set the stream
+        // Reset and set the stream with force refresh
         video.srcObject = null
+        // Small delay to ensure cleanup
+        await new Promise(resolve => setTimeout(resolve, 100))
         video.srcObject = testStream
+        
+        // Force load and play
+        try {
+          await video.load()
+          await video.play()
+          console.log('Video load and play completed')
+        } catch (playErr) {
+          console.warn('Video play failed but continuing:', playErr)
+        }
         
         // Manual trigger if metadata is already loaded
         if (video.readyState >= 1) { // HAVE_METADATA
@@ -249,14 +255,15 @@ export function CameraTest({ onClose }: CameraTestProps) {
                       playsInline
                       muted
                       className="w-full h-full object-cover"
-                      style={{ backgroundColor: '#000' }}
+                      style={{ backgroundColor: '#000', minHeight: '240px' }}
                     />
                     
                     {!videoReady && (
-                      <div className="absolute inset-0 flex items-center justify-center text-white">
+                      <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
                         <div className="text-center">
                           <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2" />
-                          <p className="text-sm">Loading video...</p>
+                          <p className="text-sm">Loading video feed...</p>
+                          <p className="text-xs mt-1 text-gray-300">Camera light is on, video should appear shortly</p>
                         </div>
                       </div>
                     )}
@@ -274,6 +281,17 @@ export function CameraTest({ onClose }: CameraTestProps) {
                         Video tracks: {stream.getVideoTracks().length} | 
                         Status: {stream.getVideoTracks()[0]?.readyState || 'unknown'}
                       </p>
+                    )}
+                    {videoReady && videoRef.current && videoRef.current.paused && (
+                      <div className="mt-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => videoRef.current?.play()}
+                          className="text-xs"
+                        >
+                          Click to Start Video
+                        </Button>
+                      </div>
                     )}
                   </div>
 

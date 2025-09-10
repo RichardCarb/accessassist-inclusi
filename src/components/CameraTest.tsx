@@ -129,13 +129,14 @@ export function CameraTest({ onClose }: CameraTestProps) {
         video.addEventListener('error', handleError)
         video.addEventListener('canplay', handleCanPlay)
         
-        // Timeout fallback - if video doesn't load within 3 seconds, force show it
+        // Timeout fallback - if video doesn't load within 1.5 seconds, show manual play
         timeoutId = setTimeout(() => {
-          console.log('Video load timeout - forcing video ready state')
-          setVideoReady(true)
+          console.log('Video load timeout - showing manual controls')
           setIsLoading(false)
-          toast.success('Camera connected! If video doesn\'t appear, try refreshing.')
-        }, 3000)
+          if (!videoReady) {
+            toast.info('Camera connected! Click the button to start video.')
+          }
+        }, 1500)
         
         // Reset and set the stream with force refresh
         video.srcObject = null
@@ -143,19 +144,37 @@ export function CameraTest({ onClose }: CameraTestProps) {
         await new Promise(resolve => setTimeout(resolve, 100))
         video.srcObject = testStream
         
-        // Force load and play
+        // Don't call load() with srcObject - it interferes with MediaStream
+        // Force play instead
         try {
-          await video.load()
           await video.play()
-          console.log('Video load and play completed')
+          console.log('Video play completed')
         } catch (playErr) {
           console.warn('Video play failed but continuing:', playErr)
+          // Try to play anyway after a delay
+          setTimeout(() => {
+            video.play().catch(e => console.warn('Retry play failed:', e))
+          }, 500)
         }
         
         // Manual trigger if metadata is already loaded
         if (video.readyState >= 1) { // HAVE_METADATA
+          console.log('Video already has metadata, triggering handler')
           handleLoadedMetadata()
         }
+        
+        // Additional fallback - check video periodically
+        const checkVideo = () => {
+          if (video.videoWidth > 0 && video.videoHeight > 0 && !videoReady) {
+            console.log('Manual video check - video has dimensions, setting ready')
+            handleVideoReady()
+          }
+        }
+        
+        // Check immediately and after delays
+        setTimeout(checkVideo, 500)
+        setTimeout(checkVideo, 1000)
+        setTimeout(checkVideo, 2000)
       } else {
         // No video element - still mark as successful since we got the stream
         console.log('No video element, but stream obtained successfully')
@@ -254,8 +273,16 @@ export function CameraTest({ onClose }: CameraTestProps) {
                       autoPlay
                       playsInline
                       muted
+                      controls={false}
                       className="w-full h-full object-cover"
                       style={{ backgroundColor: '#000', minHeight: '240px' }}
+                      onLoadStart={() => console.log('Video load started')}
+                      onLoadedData={() => console.log('Video data loaded')}
+                      onPlaying={() => {
+                        console.log('Video is playing')
+                        setVideoReady(true)
+                        setIsLoading(false)
+                      }}
                     />
                     
                     {!videoReady && (
@@ -264,6 +291,23 @@ export function CameraTest({ onClose }: CameraTestProps) {
                           <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full mx-auto mb-2" />
                           <p className="text-sm">Loading video feed...</p>
                           <p className="text-xs mt-1 text-gray-300">Camera light is on, video should appear shortly</p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-3 text-black bg-white"
+                            onClick={() => {
+                              console.log('Manual play button clicked')
+                              if (videoRef.current) {
+                                videoRef.current.play().then(() => {
+                                  console.log('Manual play successful')
+                                  setVideoReady(true)
+                                  setIsLoading(false)
+                                }).catch(e => console.warn('Manual play failed:', e))
+                              }
+                            }}
+                          >
+                            Click to Start Video
+                          </Button>
                         </div>
                       </div>
                     )}

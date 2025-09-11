@@ -234,32 +234,35 @@ export function CameraTest({ onClose }: CameraTestProps) {
                       autoPlay
                       playsInline
                       muted
+                      className="w-full h-full object-cover cursor-pointer"
+                      onClick={handleVideoClick}
+                    />
+                    
                     {(!videoReady && !isLoading) && (
                       <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
                         <div className="text-center">
-                    />-auto mb-4" />
-                    nt-medium">Click to start video</p>
-                    {(!videoReady && !isLoading) && (
-                      <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
-                        <div className="text-center">
+                          <VideoCamera className="h-12 w-12 mx-auto mb-4" />
+                          <p className="font-medium">Click to start video</p>
+                        </div>
+                      </div>
                     )}
                     
                     {isLoading && hasPermission === true && (
                       <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
                         <div className="text-center">
                           <div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-4" />
-                    
+                          <p className="font-medium">Initializing camera...</p>
                           <p className="text-sm text-gray-300">Camera permission granted</p>
                         </div>
                       </div>
                     )}
                   </div>
                   
-                        </div>
-                      </div>
-                    )}
-                  </div>dium">✓ Camera is working perfectly!</p>
-                  deo feed above.</p>
+                  <div className="space-y-2">
+                    {videoReady ? (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <p className="text-green-800 font-medium">✓ Camera is working perfectly!</p>
+                        <p className="text-green-700 text-sm">You should see your video feed above.</p>
                       </div>
                     ) : isLoading ? (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -272,23 +275,20 @@ export function CameraTest({ onClose }: CameraTestProps) {
                     )}
                   </div>
 
-                  {/* Simplified debug info */}
+                  <div className="bg-muted/50 p-3 rounded-lg text-sm">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p><strong>Permission:</strong> {hasPermission ? 'Granted' : 'Denied'}</p>
+                        <p><strong>Video Ready:</strong> {videoReady ? 'Yes' : 'No'}</p>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Simplified debug info */}
-                      <p>Loading: {isLoading ? 'Yes' : 'No'}</p>
-                      {streamRef.current && (
-                        <p>Video Tracks: {streamRef.current.getVideoTracks().length}</p>
-                      )}
+                      <div>
+                        <p><strong>Loading:</strong> {isLoading ? 'Yes' : 'No'}</p>
+                        {streamRef.current && (
+                          <p><strong>Video Tracks:</strong> {streamRef.current.getVideoTracks().length}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-
-                    </div>
-                <div className="space-y-4">
                 </div>
               )}
 
@@ -301,28 +301,31 @@ export function CameraTest({ onClose }: CameraTestProps) {
                     </div>
                   )}
                   
-                      <p className="text-sm text-red-800 font-medium">Error:</p>
-                      <p className="text-sm text-red-700 mt-1">{error}</p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-800 font-medium mb-2">To fix this:</p>
                     <ol className="text-sm text-blue-700 space-y-1 list-decimal ml-4">
                       <li>Look for the camera icon in your browser's address bar</li>
                       <li>Click it and select "Allow" for camera access</li>
                       <li>Refresh the page if needed</li>
-                <Button onClick={retryAccess} variant="outline">
-                  {hasPermission === false ? 'Try Again' : 'Refresh Camera'}
-                </Button>
-                <Button variant="outline" onClick={onClose}>
-                  Close
-                </Button>
                     </ol>
+                  </div>
+                  
+                  <div className="flex gap-2 justify-center">
+                    <Button onClick={retryAccess} variant="outline">
+                      Try Again
+                    </Button>
+                    <Button variant="outline" onClick={onClose}>
+                      Close
+                    </Button>
                   </div>
                 </div>
               )}
 
               <div className="flex gap-2 justify-center">
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <Button variant="outline" onClick={onClose}>2">
+                <Button onClick={retryAccess} variant="outline">
+                  {hasPermission === false ? 'Try Again' : 'Refresh Camera'}
+                </Button>
+                <Button variant="outline" onClick={onClose}>
                   Close
                 </Button>
               </div>
@@ -330,6 +333,18 @@ export function CameraTest({ onClose }: CameraTestProps) {
           </Card>
         </TabsContent>
 
+        <TabsContent value="tracking">
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Hand className="h-5 w-5" />
+                  Hand Tracking Test
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  This advanced test uses MediaPipe to track hand gestures in real-time 
                   for improved reliability and accuracy.
                 </p>
                 <HandTrackingCamera onClose={onClose} />

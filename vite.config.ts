@@ -1,25 +1,51 @@
-import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react-swc";
-import { defineConfig, PluginOption } from "vite";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
 
-import sparkPlugin from "@github/spark/spark-vite-plugin";
-import createIconImportProxy from "@github/spark/vitePhosphorIconProxyPlugin";
-import { resolve } from 'path'
-
-const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname
-
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-    // DO NOT REMOVE
-    createIconImportProxy() as PluginOption,
-    sparkPlugin() as PluginOption,
-  ],
+  plugins: [react()],
   resolve: {
     alias: {
-      '@': resolve(projectRoot, 'src')
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  server: {
+    host: '0.0.0.0', // Allow external connections
+    port: 5173,
+    strictPort: true, // Exit if port is already in use
+    // Uncomment for HTTPS in development (requires certificates)
+    // https: {
+    //   key: fs.readFileSync('localhost-key.pem'),
+    //   cert: fs.readFileSync('localhost.pem'),
+    // }
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    strictPort: true,
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+    // Optimize for accessibility testing
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ui: ['@radix-ui/react-dialog', '@radix-ui/react-tabs', '@radix-ui/react-button'],
+        }
+      }
     }
   },
-});
+  // Optimize for development
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      '@phosphor-icons/react',
+      'framer-motion',
+      'sonner'
+    ]
+  }
+})

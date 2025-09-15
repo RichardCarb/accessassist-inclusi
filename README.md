@@ -88,8 +88,8 @@ npm run preview
 
 - **[Product Requirements](PRD.md)** - Detailed project specifications and user experience design
 - **[Sign Language Recognition](src/docs/sign-language-recognition.md)** - Technical implementation details
-- **[Development Guide](DEVELOPMENT.md)** - Local development setup and workflows *(coming soon)*
-- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project *(coming soon)*
+- **[Development Guide](DEVELOPMENT.md)** - Local development setup and workflows
+- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
 
 ## 🤝 Contributing
 

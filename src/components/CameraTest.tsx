@@ -251,29 +251,26 @@ export function CameraTest({ onClose }: CameraTestProps) {
                       <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
                         <div className="text-center">
                           <div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-4" />
-                          <p className="font-medium">Initializing camera...</p>
-                          <p className="text-sm text-gray-300">Camera permission granted</p>
+                          <p className="text-sm text-gray-300">Setting up camera...</p>
                         </div>
                       </div>
                     )}
                   </div>
                   
-                  <div className="space-y-2">
-                    {videoReady ? (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <p className="text-green-800 font-medium">✓ Camera is working perfectly!</p>
-                        <p className="text-green-700 text-sm">You should see your video feed above.</p>
-                      </div>
-                    ) : isLoading ? (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <p className="text-blue-800">Setting up video stream...</p>
-                      </div>
-                    ) : (
-                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                        <p className="text-orange-800">Click the video area to start playback</p>
-                      </div>
-                    )}
-                  </div>
+                  {videoReady ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-green-800 font-medium">✓ Camera is working perfectly!</p>
+                      <p className="text-green-700 text-sm">You should see your video feed above.</p>
+                    </div>
+                  ) : isLoading ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-blue-800">Setting up video stream...</p>
+                    </div>
+                  ) : (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                      <p className="text-orange-800">Click the video area to start playback</p>
+                    </div>
+                  )}
 
                   <div className="bg-muted/50 p-3 rounded-lg text-sm">
                     <div className="grid grid-cols-2 gap-4">
@@ -294,29 +291,26 @@ export function CameraTest({ onClose }: CameraTestProps) {
 
               {hasPermission === false && (
                 <div className="space-y-4">
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                      <p className="text-sm text-red-800 font-medium">Error:</p>
-                      <p className="text-sm text-red-700 mt-1">{error}</p>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-red-600 mb-2">
+                      <X className="h-5 w-5" />
+                      <span className="font-medium">Camera Access Failed</span>
                     </div>
-                  )}
+                    {error && (
+                      <>
+                        <p className="text-sm text-red-800 font-medium">Error:</p>
+                        <p className="text-sm text-red-700 mt-1">{error}</p>
+                      </>
+                    )}
+                  </div>
                   
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <p className="text-sm text-blue-800 font-medium mb-2">To fix this:</p>
                     <ol className="text-sm text-blue-700 space-y-1 list-decimal ml-4">
-                      <li>Look for the camera icon in your browser's address bar</li>
+                      <li>Look for a camera icon in your browser's address bar</li>
                       <li>Click it and select "Allow" for camera access</li>
                       <li>Refresh the page if needed</li>
                     </ol>
-                  </div>
-                  
-                  <div className="flex gap-2 justify-center">
-                    <Button onClick={retryAccess} variant="outline">
-                      Try Again
-                    </Button>
-                    <Button variant="outline" onClick={onClose}>
-                      Close
-                    </Button>
                   </div>
                 </div>
               )}
@@ -334,23 +328,21 @@ export function CameraTest({ onClose }: CameraTestProps) {
         </TabsContent>
 
         <TabsContent value="tracking">
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Hand className="h-5 w-5" />
-                  Hand Tracking Test
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground mb-4">
-                  This advanced test uses MediaPipe to track hand gestures in real-time 
-                  for improved reliability and accuracy.
-                </p>
-                <HandTrackingCamera onClose={onClose} />
-              </CardContent>
-            </Card>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Hand className="h-5 w-5" />
+                Hand Tracking Test
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                This advanced test uses MediaPipe to track hand gestures in real-time 
+                for improved reliability and accuracy.
+              </p>
+              <HandTrackingCamera onClose={onClose} />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

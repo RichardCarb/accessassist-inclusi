@@ -79,58 +79,76 @@ export function CameraTest({ onClose }: CameraTestProps) {
       if (videoRef.current) {
         const video = videoRef.current
         
+        console.log('Setting up video element...')
+        
+        // Assign the stream first
+        video.srcObject = stream
+        
+        // Set video properties for better compatibility
+        video.setAttribute('playsinline', 'true')
+        video.setAttribute('autoplay', 'true')
+        video.setAttribute('muted', 'true')
+        
         // Wait for video to be ready
         const setupVideo = () => {
           return new Promise<void>((resolve) => {
-            const onCanPlay = () => {
-              console.log('Video can play - setting up stream')
-              video.removeEventListener('canplay', onCanPlay)
-              video.removeEventListener('loadedmetadata', onCanPlay)
+            let resolved = false
+            
+            const onVideoReady = () => {
+              if (resolved) return
+              resolved = true
               
-              // Check if video dimensions are valid
-              if (video.videoWidth > 0 && video.videoHeight > 0) {
-                console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`)
-                setVideoReady(true)
-                setIsLoading(false)
-                toast.success('Camera is working!')
-                resolve()
-              } else {
-                // Force ready state even without dimensions
-                setTimeout(() => {
-                  setVideoReady(true)
-                  setIsLoading(false)
-                  resolve()
-                }, 500)
-              }
+              console.log('Video ready event fired')
+              video.removeEventListener('canplay', onVideoReady)
+              video.removeEventListener('loadedmetadata', onVideoReady)
+              video.removeEventListener('loadeddata', onVideoReady)
+              
+              // Log video state for debugging
+              console.log('Video state:', {
+                readyState: video.readyState,
+                videoWidth: video.videoWidth,
+                videoHeight: video.videoHeight,
+                paused: video.paused,
+                srcObject: !!video.srcObject
+              })
+              
+              setVideoReady(true)
+              setIsLoading(false)
+              toast.success('Camera is working!')
+              resolve()
             }
             
-            video.addEventListener('canplay', onCanPlay)
-            video.addEventListener('loadedmetadata', onCanPlay)
+            // Listen to multiple events for better compatibility
+            video.addEventListener('canplay', onVideoReady)
+            video.addEventListener('loadedmetadata', onVideoReady)
+            video.addEventListener('loadeddata', onVideoReady)
             
-            // Fallback timeout
+            // Force play after a short delay
+            setTimeout(async () => {
+              if (!resolved) {
+                try {
+                  await video.play()
+                  console.log('Manual video play successful')
+                } catch (playError) {
+                  console.log('Manual play failed:', playError)
+                }
+              }
+            }, 100)
+            
+            // Fallback timeout - still mark as ready even if events don't fire
             setTimeout(() => {
-              if (!videoReady) {
+              if (!resolved) {
                 console.log('Timeout reached - forcing video ready state')
-                video.removeEventListener('canplay', onCanPlay)
-                video.removeEventListener('loadedmetadata', onCanPlay)
+                resolved = true
+                video.removeEventListener('canplay', onVideoReady)
+                video.removeEventListener('loadedmetadata', onVideoReady)
+                video.removeEventListener('loadeddata', onVideoReady)
                 setVideoReady(true)
                 setIsLoading(false)
                 resolve()
               }
-            }, 3000)
+            }, 2000)
           })
-        }
-
-        // Assign the stream
-        video.srcObject = stream
-        
-        // Start video playback
-        try {
-          await video.play()
-          console.log('Video play started')
-        } catch (playError) {
-          console.log('Autoplay prevented:', playError)
-          // Don't treat this as an error - user can click to play
         }
         
         // Wait for video to be ready
@@ -261,6 +279,11 @@ export function CameraTest({ onClose }: CameraTestProps) {
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                       <p className="text-green-800 font-medium">✓ Camera is working perfectly!</p>
                       <p className="text-green-700 text-sm">You should see your video feed above.</p>
+                      {videoRef.current && videoRef.current.videoWidth === 0 && (
+                        <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded">
+                          <p className="text-orange-800 text-sm">⚠️ Camera connected but video appears black. Try clicking the refresh button below.</p>
+                        </div>
+                      )}
                     </div>
                   ) : isLoading ? (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -268,7 +291,7 @@ export function CameraTest({ onClose }: CameraTestProps) {
                     </div>
                   ) : (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                      <p className="text-orange-800">Click the video area to start playback</p>
+                      <p className="text-orange-800">Click the video area to start playback or use the refresh button below</p>
                     </div>
                   )}
 
@@ -277,10 +300,21 @@ export function CameraTest({ onClose }: CameraTestProps) {
                       <div>
                         <p><strong>Permission:</strong> {hasPermission ? 'Granted' : 'Denied'}</p>
                         <p><strong>Loading:</strong> {isLoading ? 'Yes' : 'No'}</p>
+                        <p><strong>Video Ready:</strong> {videoReady ? 'Yes' : 'No'}</p>
                       </div>
                       <div>
                         {streamRef.current && (
-                          <p><strong>Video Tracks:</strong> {streamRef.current.getVideoTracks().length}</p>
+                          <>
+                            <p><strong>Video Tracks:</strong> {streamRef.current.getVideoTracks().length}</p>
+                            <p><strong>Stream Active:</strong> {streamRef.current.active ? 'Yes' : 'No'}</p>
+                          </>
+                        )}
+                        {videoRef.current && (
+                          <>
+                            <p><strong>Video Paused:</strong> {videoRef.current.paused ? 'Yes' : 'No'}</p>
+                            <p><strong>Ready State:</strong> {videoRef.current.readyState}</p>
+                            <p><strong>Dimensions:</strong> {videoRef.current.videoWidth}x{videoRef.current.videoHeight}</p>
+                          </>
                         )}
                       </div>
                     </div>

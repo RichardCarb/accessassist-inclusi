@@ -37,7 +37,7 @@ function App() {
 
   // Apply accessibility settings to document
   React.useEffect(() => {
-    if (typeof document !== 'undefined') {
+    if (typeof document !== 'undefined' && accessibilitySettings) {
       const root = document.documentElement
       
       // Apply high contrast
@@ -71,11 +71,12 @@ function App() {
   const handleDraftUpdated = (updatedComplaint: ComplaintData) => {
     setCurrentComplaint(updatedComplaint)
     setComplaints(prev => {
-      const existing = prev.find(c => c.id === updatedComplaint.id)
+      const prevArray = prev || []
+      const existing = prevArray.find(c => c.id === updatedComplaint.id)
       if (existing) {
-        return prev.map(c => c.id === updatedComplaint.id ? updatedComplaint : c)
+        return prevArray.map(c => c.id === updatedComplaint.id ? updatedComplaint : c)
       } else {
-        return [...prev, updatedComplaint]
+        return [...prevArray, updatedComplaint]
       }
     })
   }
@@ -174,8 +175,8 @@ function App() {
                   <p className="text-sm text-muted-foreground">
                     Monitor deadlines and get escalation guidance
                   </p>
-                  <Button variant="outline" className="w-full" disabled={complaints.length === 0}>
-                    View Tracker ({complaints.length})
+                  <Button variant="outline" className="w-full" disabled={(complaints || []).length === 0}>
+                    View Tracker ({(complaints || []).length})
                   </Button>
                 </div>
               </Card>
@@ -208,10 +209,10 @@ function App() {
               </Card>
             </div>
 
-            {complaints.length > 0 && (
+            {(complaints || []).length > 0 && (
               <div className="max-w-5xl mx-auto">
                 <ComplaintTracker
-                  complaints={complaints}
+                  complaints={complaints || []}
                   onViewComplaint={handleViewComplaint}
                   onEscalateComplaint={handleEscalateComplaint}
                 />
@@ -230,7 +231,15 @@ function App() {
                   <div>
                     <span className="font-medium">Media API:</span><br />
                     Available: {typeof navigator !== 'undefined' && navigator.mediaDevices ? '✓' : '✗'}<br />
-                    getUserMedia: {typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia ? '✓' : '✗'}
+                    getUserMedia: {(() => {
+                      try {
+                        return typeof navigator !== 'undefined' && 
+                               navigator.mediaDevices && 
+                               typeof navigator.mediaDevices.getUserMedia === 'function' ? '✓' : '✗'
+                      } catch {
+                        return '✗'
+                      }
+                    })()}
                   </div>
                 </div>
               </div>
@@ -290,7 +299,7 @@ function App() {
         {currentView === 'intake' && (
           <ComplaintIntake
             onComplaintCreated={handleComplaintCreated}
-            voiceEnabled={accessibilitySettings.voiceEnabled}
+            voiceEnabled={accessibilitySettings?.voiceEnabled || false}
           />
         )}
 

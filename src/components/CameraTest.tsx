@@ -175,7 +175,7 @@ export function CameraTest({ onClose }: CameraTestProps) {
   }
 
   const handleVideoClick = async () => {
-    if (videoRef.current && !videoRef.current.playing) {
+    if (videoRef.current && videoRef.current.paused) {
       try {
         await videoRef.current.play()
         console.log('Video play successful after user interaction')
@@ -257,6 +257,7 @@ export function CameraTest({ onClose }: CameraTestProps) {
                     )}
                   </div>
                   
+                  {videoReady ? (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                       <p className="text-green-800 font-medium">✓ Camera is working perfectly!</p>
                       <p className="text-green-700 text-sm">You should see your video feed above.</p>
@@ -265,20 +266,20 @@ export function CameraTest({ onClose }: CameraTestProps) {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <p className="text-blue-800">Setting up video stream...</p>
                     </div>
-                    </div>
+                  ) : (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                       <p className="text-orange-800">Click the video area to start playback</p>
                     </div>
                   )}
 
                   <div className="bg-muted/50 p-3 rounded-lg text-sm">
-                  <div className="bg-muted/50 p-3 rounded-lg text-sm">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                      <div><strong>Permission:</strong> {hasPermission ? 'Granted' : 'Denied'}</p>
                         <p><strong>Permission:</strong> {hasPermission ? 'Granted' : 'Denied'}</p>
-                      </div>
                         <p><strong>Loading:</strong> {isLoading ? 'Yes' : 'No'}</p>
+                      </div>
                       <div>
+                        {streamRef.current && (
                           <p><strong>Video Tracks:</strong> {streamRef.current.getVideoTracks().length}</p>
                         )}
                       </div>
@@ -287,46 +288,50 @@ export function CameraTest({ onClose }: CameraTestProps) {
                 </div>
               )}
 
+              {hasPermission === false && (
                 <div className="space-y-4">
- className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <div className="flex items-center gap-2 text-red-600 mb-2">
                       <X className="h-5 w-5" />
                       <span className="font-medium">Camera Access Failed</span>
                     </div>
                     {error && (
                       <>
-                    </div>text-red-800 font-medium">Error:</p>
+                        <p className="text-sm text-red-800 font-medium">Error:</p>
                         <p className="text-sm text-red-700 mt-1">{error}</p>
-                      <>
+                      </>
                     )}
                   </div>
                   
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <p className="text-sm text-blue-800 font-medium mb-2">To fix this:</p>
                     <ol className="text-sm text-blue-700 space-y-1 list-decimal ml-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-800 font-medium mb-2">To fix this:</p>
-                      <li>Refresh the page if needed</li>
-                    </ol>
+                      <li>Look for a camera icon in your browser's address bar</li>
                       <li>Click it and select "Allow" for camera access</li>
                       <li>Refresh the page if needed</li>
+                    </ol>
+                  </div>
+                </div>
               )}
-                  {hasPermission === false ? 'Try Again' : 'Refresh Camera'}
-                </Button>
-                <Button variant="outline" onClick={onClose}>
-                  Close
+
               <div className="flex gap-2 justify-center">
                 <Button onClick={retryAccess} variant="outline">
                   {hasPermission === false ? 'Try Again' : 'Refresh Camera'}
                 </Button>
-        </TabsContent>
+                <Button variant="outline" onClick={onClose}>
                   Close
                 </Button>
               </div>
             </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="tracking">
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Hand className="h-5 w-5" />
-
+                Hand Tracking Test
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -335,11 +340,10 @@ export function CameraTest({ onClose }: CameraTestProps) {
                 for improved reliability and accuracy.
               </p>
               <HandTrackingCamera onClose={onClose} />
-            <CardContent>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
   )
-}        </TabsContent>      </Tabs>
-    </div>
+}
